@@ -55,6 +55,7 @@ public class ConsumerST extends AbstractST {
     private static final int MESSAGE_COUNT = Constants.MESSAGE_COUNT_HIGH;
 
     // ResetOffset TestBucket
+
     private static final String RESET_OFFSET_TOPIC_PREFIX = "rst-all-topics-var-offset";
     private static final int RESET_OFFSET_TOPIC_COUNT = 2;
     private static final String RESET_OFFSET_CONSUMER_GROUP_NAME = "reset-offset-consumer-group";
