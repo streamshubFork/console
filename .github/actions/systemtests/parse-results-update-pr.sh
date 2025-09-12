@@ -133,6 +133,6 @@ echo "Results file $(cat $RESULT_MD)"
 gh api repos/$REPO/statuses/$COMMIT_SHA -f state="$STATE" -f context="System Tests" -f description="$DESCRIPTION" -f target_url="$RUN_URL"
 
 # Comment PR with results markdown - do not edit help comment
-COMMENT_MODE=$(getCommentMode "Systemtests Help" false)
+COMMENT_MODE=$(getEditModeIfLastCommentIsHelp)
 echo "Comment mode: $COMMENT_MODE"
 gh pr comment $PR_NUMBER --repo $REPO $COMMENT_MODE --body-file $RESULT_MD
