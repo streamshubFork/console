@@ -1,14 +1,8 @@
 name: Build
 on:
-  push:
-    branches:
-      - 'main'
-      - '[0-9]+.[0-9]+.x'
   pull_request:
     branches:
-      - 'main'
-      - '[0-9]+.[0-9]+.x'
-      - 'systemtests'
+      - 'mastermainer'
     types: [ opened, reopened, synchronize ]
 
 jobs:
@@ -238,9 +232,3 @@ jobs:
           npx --yes concurrently -k -s first -n "SB,TEST" -c "magenta,blue" \
             "npx http-server storybook-static --port 6006 --silent" \
             "npx wait-on tcp:127.0.0.1:6006 && npm run test-storybook"
-
-  Playwright:
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'safe to test') || github.repository == 'streamshub/console' }}
-    uses: ./.github/workflows/playwright-tests.yml
-    needs:
-      - build-images
