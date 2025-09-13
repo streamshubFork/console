@@ -3,6 +3,9 @@ set -xeuo pipefail
 
 # Get directory of this script
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+source $SCRIPT_DIR/common.sh
+
 ROOT_DIR="$SCRIPT_DIR/../../.."
 PARAMS_MD=${1:-"$ROOT_DIR/params.md"}
 
