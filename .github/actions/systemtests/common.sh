@@ -15,7 +15,7 @@ getEditModeIfLastCommentIsHelp() {
           | .body // empty')
 
   if [[ -n $last_body && $last_body != *"$marker"* ]]; then
-    echo "--edit-last --create-if-none"
+    echo "--edit-last"
   else
     echo ""
   fi
