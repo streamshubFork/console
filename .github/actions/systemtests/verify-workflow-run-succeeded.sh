@@ -19,7 +19,7 @@ BUILD_RUN=$(gh api "repos/$REPO/actions/workflows/$WORKFLOW_FILE/runs?branch=$BR
   --jq '.workflow_runs[0].conclusion')
 
 echo "Build workflow latest run conclusion: $BUILD_RUN"
-if [[ "$BUILD_RUN" == "success" ]]; then
+if [[ "$BUILD_RUN" != "success" ]]; then
   # Do not edit help comment
   COMMENT_MODE=$(getEditModeIfLastCommentIsHelp)
   echo "Comment mode: $COMMENT_MODE"
