@@ -37,7 +37,14 @@ jobs:
         id: parse_env
         run: ./.github/actions/systemtests/parse-pr-comment-params.sh
 
-      - name: Comment the build
+      - name: Comment start of the build
+        env:
+          COMMIT_SHA: ${{ steps.parse_env.outputs.commit_sha }}
+          TEST_CASE: ${{ steps.parse_env.outputs.testcase }}
+          PROFILE: ${{ steps.parse_env.outputs.profile }}
+          INSTALL_TYPE: ${{ steps.parse_env.outputs.install_type }}
+          RETRY_COUNT: ${{ steps.parse_env.outputs.retry_count }}
+          ENVS: ${{ steps.parse_env.outputs.env_str }}
         run: ./.github/actions/systemtests/update-pr-systemtests-started.sh
 
       - name: Invoke workflow in another repo with inputs
