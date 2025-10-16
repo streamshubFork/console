@@ -107,7 +107,7 @@ if [[ -n "$FAILED_TESTS" ]]; then
   LIST_FAILED="#### Test Failures:"
   IFS=',' read -ra FAILED_ARRAY <<< "$FAILED_TESTS"
   for t in "${FAILED_ARRAY[@]}"; do
-    [[ -n "$t" ]] && LIST_FAILED+="\n- $t"
+    [[ -n "$t" ]] && LIST_FAILED+=$(printf '\n- %s' "$t")
   done
 fi
 
