@@ -79,7 +79,7 @@ jobs:
 
       - name: Get the commit details
         run: |
-          ARTIFACTS_RUN_ID=$(gh run list --repo $REPO --commit $COMMIT_SHA --workflow integration.yml --status success --status success --json databaseId --jq '.[0].databaseId')
+          ARTIFACTS_RUN_ID=$(gh run list --repo $REPO --commit $COMMIT_SHA --workflow integration.yml --status success --json databaseId --jq '.[0].databaseId')
           PR_NUMBER=$(gh pr list --repo $REPO --state open --search $COMMIT_SHA --json number,createdAt -q "sort_by(.createdAt) | .[-1] | .number")
         
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
@@ -214,9 +214,12 @@ jobs:
       - name: Download all systemtest artifacts
         uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5
         with:
+          github_token: ${{ env.GH_TOKEN }}
           path: ./all-systemtest-artifacts
-          pattern: systemtests-artifacts-*
-          merge-multiple: false
+          name: systemtests-artifacts-.*
+          skip_unpack: false
+          name_is_regexp: true
+          merge_multiple: true
 
       - name: Parse results and update PR status
         if: always()
