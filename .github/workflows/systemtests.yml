@@ -60,6 +60,11 @@ jobs:
       - name: Comment the build
         run: ./.github/actions/systemtests/update-pr-systemtests-started.sh
 
+      # TODO: remove
+      - name: Parse results and update PR status
+        if: always()
+        run: ./.github/actions/systemtests/parse-results-update-pr.sh
+
       - name: Download Images
         id: download-artifact
         uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5

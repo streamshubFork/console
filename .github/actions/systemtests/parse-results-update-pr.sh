@@ -76,6 +76,10 @@ for f in "${TEST_FILES[@]}"; do
   done
 done
 
+# TODO: remove
+FAILED_TESTS+="Random.Test#TestCaseFailed,"
+FAILED_TESTS+="SecondRandom.Test#TestSecondCaseFailed,"
+
 FAILED_TESTS="${FAILED_TESTS%,}"
 PASSED=$((TOTAL - FAILED - ERRORS - SKIPPED))
 
