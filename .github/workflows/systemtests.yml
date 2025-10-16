@@ -43,12 +43,9 @@ jobs:
         with:
           ref: ${{ env.COMMIT_SHA }}
 
-      - name: Get the commit details
+      - name: Get previously built artifacts
         run: |
           ARTIFACTS_RUN_ID=$(gh run list --repo $REPO --commit $COMMIT_SHA --workflow integration.yml --status success --json databaseId --jq '.[0].databaseId')
-          PR_NUMBER=$(gh pr list --repo $REPO --state open --search $COMMIT_SHA --json number,createdAt -q "sort_by(.createdAt) | .[-1] | .number")
-
-          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
           echo "ARTIFACTS_RUN_ID=$ARTIFACTS_RUN_ID" >> $GITHUB_ENV
 
       - name: Generate ST matrix
@@ -56,7 +53,7 @@ jobs:
         run: ./.github/actions/systemtests/generate-test-matrix.sh
 
 
-  # Run single or matrix STs
+  # Run single or matrix of ST jobs
   run-systemtests:
     needs: generate-matrix
     strategy:
@@ -216,6 +213,11 @@ jobs:
           pattern: systemtests-artifacts-*
           merge-multiple: true
           path: ./all-systemtest-artifacts
+
+      - name: Get current PR number
+        run: |
+          PR_NUMBER=$(gh pr list --repo $REPO --state open --search $COMMIT_SHA --json number,createdAt -q "sort_by(.createdAt) | .[-1] | .number")
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
 
       - name: Parse results and update PR status
         if: always()
