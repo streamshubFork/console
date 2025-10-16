@@ -31,6 +31,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
+      TESTCASE: ${{ github.event.inputs.testcase }}
+      PROFILE: ${{ github.event.inputs.profile }}
     outputs:
       matrix: ${{ steps.generate-matrix.outputs.matrix }}
     steps:
@@ -42,6 +44,7 @@ jobs:
       - name: Generate ST matrix
         id: generate-matrix
         run: ./.github/actions/systemtests/generate-test-matrix.sh
+
 
   # Run single or matrix STs
   run-systemtests:
