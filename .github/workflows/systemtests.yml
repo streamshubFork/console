@@ -83,9 +83,6 @@ jobs:
           echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
           echo "ARTIFACTS_RUN_ID=$ARTIFACTS_RUN_ID" >> $GITHUB_ENV
 
-      - name: Comment the build
-        run: ./.github/actions/systemtests/update-pr-systemtests-started.sh
-
       - name: Download Images
         id: download-artifact
         uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5
@@ -181,7 +178,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: systemtests-artifacts
+          name: systemtests-artifacts-${{ matrix.testcase }}${{ matrix.profile && format('-{0}', matrix.profile) || '' }}
           if-no-files-found: warn
           path: |
             systemtests/target/**/TEST-*.xml
@@ -189,6 +186,30 @@ jobs:
             systemtests/screenshot/**
             systemtests/tracing/**
 
+  aggregate-results:
+    needs: run-systemtests
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+    runs-on: ubuntu-24.04
+    if: always()  # Ensure it runs even if tests failed
+    env:
+      GH_TOKEN: ${{ secrets.BOT_ORG_SCOPED_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.inputs.pr_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download all systemtest artifacts
+        uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5
+        with:
+          path: ./all-systemtest-artifacts
+          pattern: systemtests-artifacts-*
+          merge-multiple: false
+
       - name: Parse results and update PR status
         if: always()
         run: ./.github/actions/systemtests/parse-results-update-pr.sh
+

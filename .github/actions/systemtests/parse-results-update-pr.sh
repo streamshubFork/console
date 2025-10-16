@@ -7,8 +7,26 @@ SCRIPT_DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P)"
 source $SCRIPT_DIR/common.sh
 
 ROOT_DIR="$SCRIPT_DIR/../../.."
-RESULT_DIR=${1:-"$ROOT_DIR/systemtests/target/failsafe-reports"}
+
+# Where to collect merged reports
+MERGED_DIR="$ROOT_DIR/merged-failsafe-reports"
+RESULT_DIR=${1:-"$MERGED_DIR"}
 RESULT_MD=${2:-"$ROOT_DIR/test-results.md"}
+
+echo "=== Merge test results ==="
+mkdir -p "$MERGED_DIR"
+# 1️⃣ Merge all results from downloaded artifacts if available
+if [[ -d "$ROOT_DIR/all-systemtest-artifacts" ]]; then
+  echo "Merging all systemtest artifacts into $MERGED_DIR"
+  find "$ROOT_DIR/all-systemtest-artifacts" -type d -name failsafe-reports | while read d; do
+    echo " -> from: $d"
+    cp -r "$d"/* "$MERGED_DIR/" 2>/dev/null || true
+  done
+else
+  echo "No all-systemtest-artifacts directory found; using default results path"
+fi
+
+echo "=== Prepare test results and update PR status ==="
 
 TOTAL=0
 PASSED=0
@@ -17,7 +35,7 @@ ERRORS=0
 SKIPPED=0
 FAILED_TESTS=""
 
-echo "Prepare test results and update PR status"
+
 
 TEST_FILES=()
 if [[ -d "$RESULT_DIR" ]]; then
