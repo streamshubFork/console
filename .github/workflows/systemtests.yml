@@ -32,7 +32,7 @@ jobs:
     env:
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix: ${{ steps.generate-matrix.outputs.matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -40,37 +40,8 @@ jobs:
           ref: ${{ env.COMMIT_SHA }}
 
       - name: Generate ST matrix
-        id: set-matrix
-        run: |
-          TESTCASE="${{ github.event.inputs.testcase }}"
-          PROFILE="${{ github.event.inputs.profile }}"
-          
-          # --- CASE 1: single testcase provided ---
-          if [[ -n "$TESTCASE" ]]; then
-            echo "Single testcase detected: $TESTCASE"
-            echo "matrix={\"include\":[{\"testcase\":\"$TESTCASE\",\"profile\":\"$PROFILE\"}]}" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # --- CASE 2 + 3: no specific testcase provided -> generate all ST files ---
-          echo "No specific testcase provided, generating matrix..."
-          FILES=$(find systemtests/src/test/java -type f -name '*ST.java' ! -name 'AbstractST.java')
-
-          MATRIX="["
-          SEP=""
-          for f in $FILES; do
-            NAME=$(basename "$f" .java)
-            if [[ -n "$PROFILE" ]]; then
-              MATRIX+="${SEP}{\"testcase\":\"$NAME\",\"profile\":\"$PROFILE\"}"
-            else
-              MATRIX+="${SEP}{\"testcase\":\"$NAME\"}"
-            fi
-            SEP=","
-          done
-          MATRIX+="]"
-
-          echo "Matrix: $MATRIX"
-          echo "matrix={\"include\":$MATRIX}" >> $GITHUB_OUTPUT
+        id: generate-matrix
+        run: ./.github/actions/systemtests/generate-test-matrix.sh
 
   # Run single or matrix STs
   run-systemtests:
@@ -78,6 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      max-parallel: 2
     permissions:
       contents: read
       statuses: write
