@@ -195,7 +195,7 @@ public class KafkaST extends AbstractST {
         assertEquals(Constants.REGULAR_BROKER_REPLICAS + Constants.REGULAR_CONTROLLER_REPLICAS, tcc.page().locator(NodesPageSelectors.NPS_TABLE_BODY).all().size());
 
         // Scale brokers
-        LOGGER.debug("Scale Kafka brokers to {}", scaledBrokersCount);
+        LOGGER.debug("Scaled Kafka brokers to {}", scaledBrokersCount);
         KubeResourceManager.get().createOrUpdateResourceWithWait(
             new KafkaNodePoolBuilder(ResourceUtils.getKubeResource(KafkaNodePool.class, tcc.namespace(), KafkaNamingUtils.brokerPoolName(tcc.kafkaName())))
                 .editSpec()
