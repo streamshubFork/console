@@ -41,6 +41,14 @@ jobs:
         with:
           ref: ${{ env.COMMIT_SHA }}
 
+      - name: Get the commit details
+        run: |
+          ARTIFACTS_RUN_ID=$(gh run list --repo $REPO --commit $COMMIT_SHA --workflow integration.yml --status success --json databaseId --jq '.[0].databaseId')
+          PR_NUMBER=$(gh pr list --repo $REPO --state open --search $COMMIT_SHA --json number,createdAt -q "sort_by(.createdAt) | .[-1] | .number")
+
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+          echo "ARTIFACTS_RUN_ID=$ARTIFACTS_RUN_ID" >> $GITHUB_ENV
+
       - name: Generate ST matrix
         id: generate-matrix
         run: ./.github/actions/systemtests/generate-test-matrix.sh
@@ -52,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
-      max-parallel: 2
+      max-parallel: 4
     permissions:
       contents: read
       statuses: write
@@ -77,13 +85,6 @@ jobs:
         with:
           ref: ${{ env.COMMIT_SHA }}
 
-      - name: Get the commit details
-        run: |
-          ARTIFACTS_RUN_ID=$(gh run list --repo $REPO --commit $COMMIT_SHA --workflow integration.yml --status success --json databaseId --jq '.[0].databaseId')
-          PR_NUMBER=$(gh pr list --repo $REPO --state open --search $COMMIT_SHA --json number,createdAt -q "sort_by(.createdAt) | .[-1] | .number")
-        
-          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
-          echo "ARTIFACTS_RUN_ID=$ARTIFACTS_RUN_ID" >> $GITHUB_ENV
 # TODO: remove
 #      - name: Download Images
 #        id: download-artifact
@@ -197,7 +198,6 @@ jobs:
     runs-on: ubuntu-24.04
     if: always()  # Ensure it runs even if tests failed
     env:
-      RUN_URL: ${{ github.run_url }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
       GH_TOKEN: ${{ secrets.BOT_ORG_SCOPED_TOKEN }}

@@ -148,7 +148,7 @@ RESULTS
 echo "Results file $(cat $RESULT_MD)"
 
 # Set status check of the PR
-gh api repos/$REPO/statuses/$COMMIT_SHA -f state="$STATE" -f context="System Tests" -f description="$DESCRIPTION" -f target_url="$RUN_URL"
+gh api repos/$REPO/statuses/$COMMIT_SHA -f state="$STATE" -f context="System Tests" -f description="$DESCRIPTION"
 
 # Comment PR with results markdown
 deleteLastStatusComment
