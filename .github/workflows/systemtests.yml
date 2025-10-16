@@ -30,6 +30,8 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-24.04
     env:
+      GH_TOKEN: ${{ secrets.BOT_ORG_SCOPED_TOKEN }}
+      REPO: ${{ github.repository }}
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
       TESTCASE: ${{ github.event.inputs.testcase }}
       PROFILE: ${{ github.event.inputs.profile }}
