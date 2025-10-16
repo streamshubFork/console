@@ -18,7 +18,7 @@ on:
       retry_count:
         description: 'Retry count to use'
         required: false
-      env_str:
+      envs:
         description: 'Envs to use for tests'
         required: false
 
