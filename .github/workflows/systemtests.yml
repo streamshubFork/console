@@ -200,7 +200,6 @@ jobs:
     runs-on: ubuntu-24.04
     if: always()  # Ensure it runs even if tests failed
     env:
-      PR_NUMBER: ${{ github.event.inputs.pr_number }}
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
       GH_TOKEN: ${{ secrets.BOT_ORG_SCOPED_TOKEN }}
       REPO: ${{ github.repository }}
