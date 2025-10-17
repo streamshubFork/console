@@ -212,6 +212,7 @@ jobs:
         with:
           # TODO: remove
           run-id: 18590164310
+          github-token: ${{ env.GITHUB_TOKEN }}
           pattern: systemtests-artifacts-*
           merge-multiple: true
           path: ./all-systemtest-artifacts
