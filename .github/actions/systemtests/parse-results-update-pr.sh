@@ -9,18 +9,18 @@ source $SCRIPT_DIR/common.sh
 ROOT_DIR="$SCRIPT_DIR/../../.."
 
 # Where to collect merged reports
-MERGED_DIR="$ROOT_DIR/merged-failsafe-reports"
-RESULT_DIR=${1:-"$MERGED_DIR"}
+ALL_RESULTS="$ROOT_DIR/all-systemtest-artifacts"
+RESULT_DIR=${1:-"$ROOT_DIR/merged-failsafe-reports"}
 RESULT_MD=${2:-"$ROOT_DIR/test-results.md"}
 
 echo "=== Merge test results ==="
-mkdir -p "$MERGED_DIR"
+mkdir -p "$RESULT_DIR"
 # 1️⃣ Merge all results from downloaded artifacts if available
-if [[ -d "$ROOT_DIR/all-systemtest-artifacts" ]]; then
-  echo "Merging all systemtest artifacts into $MERGED_DIR"
-  find "$ROOT_DIR/all-systemtest-artifacts" -type d -name failsafe-reports | while read d; do
+if [[ -d "$ALL_RESULTS" ]]; then
+  echo "Merging all systemtest artifacts into $RESULT_DIR"
+  find "$ALL_RESULTS" -type d -name failsafe-reports | while read d; do
     echo " -> from: $d"
-    cp -r "$d"/* "$MERGED_DIR/" 2>/dev/null || true
+    cp -r "$d"/* "$RESULT_DIR/" 2>/dev/null || true
   done
 else
   echo "No all-systemtest-artifacts directory found; using default results path"
@@ -33,11 +33,10 @@ PASSED=0
 FAILED=0
 ERRORS=0
 SKIPPED=0
+
 FAILED_TESTS=""
-
-
-
 TEST_FILES=()
+
 if [[ -d "$RESULT_DIR" ]]; then
   echo "Directory exists. Finding TEST-*.xml files"
   # Collect files into an array
@@ -58,10 +57,10 @@ for f in "${TEST_FILES[@]}"; do
   echo "Processing results file $f"
 
   # Get test type count directly from root testSuite tag
-  TOTAL=$(yq -p=xml -o=json '.testsuite."+@tests"' "$f" | jq -r)
-  FAILED=$(yq -p=xml -o=json '.testsuite."+@failures"' "$f" | jq -r)
-  ERRORS=$(yq -p=xml -o=json '.testsuite."+@errors"' "$f" | jq -r)
-  SKIPPED=$(yq -p=xml -o=json '.testsuite."+@skipped"' "$f" | jq -r)
+  TOTAL=$(( TOTAL + $(yq -p=xml -o=json '.testsuite."+@tests" // 0' "$f" | jq -r) ))
+  FAILED=$(( FAILED + $(yq -p=xml -o=json '.testsuite."+@failures" // 0' "$f" | jq -r) ))
+  ERRORS=$(( ERRORS + $(yq -p=xml -o=json '.testsuite."+@errors" // 0' "$f" | jq -r) ))
+  SKIPPED=$(( SKIPPED + $(yq -p=xml -o=json '.testsuite."+@skipped" // 0' "$f" | jq -r) ))
 
   # Get more info about what test failed from list of testcases
   TESTCASES_JSON=$(yq -p=xml -o=json '.testsuite.testcase
@@ -92,6 +91,7 @@ for f in "${TEST_FILES[@]}"; do
       FAILED_TESTS+="$TEST_DISPLAY,"
     fi
   done
+
 done
 
 FAILED_TESTS="${FAILED_TESTS%,}"
