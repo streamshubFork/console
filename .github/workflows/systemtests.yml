@@ -66,11 +66,12 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-24.04
     env:
+      # Need to use MATRIX TEST_CASE instead of the testcase from trigger job
+      TEST_CASE: ${{ matrix.testcase }}
+      PROFILE: ${{ matrix.profile }}
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
       GH_TOKEN: ${{ secrets.BOT_ORG_SCOPED_TOKEN }}
       REPO: ${{ github.repository }}
-      TEST_CASE: ${{ github.event.inputs.testcase }}
-      PROFILE: ${{ github.event.inputs.profile }}
       INSTALL_TYPE: ${{ github.event.inputs.install_type }}
       RETRY_COUNT: ${{ github.event.inputs.retry_count }}
       ENVS: ${{ github.event.inputs.env_str }}
