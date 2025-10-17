@@ -29,9 +29,9 @@ jobs:
       - name: Comment Help
         if: ${{ contains(github.event.comment.body, '--help') }}
         run: ./.github/actions/systemtests/pr-help.sh
-# TODO: remove
-#      - name: Check if Build workflow succeeded
-#        run: ./.github/actions/systemtests/verify-workflow-run-succeeded.sh
+
+      - name: Check if Build workflow succeeded
+        run: ./.github/actions/systemtests/verify-workflow-run-succeeded.sh
 
       - name: Parse parameters from comment
         id: parse_env
