@@ -207,15 +207,28 @@ jobs:
       ENVS: ${{ github.event.inputs.env_str }}
     steps:
       - uses: actions/checkout@v5
-      - name: Download all systemtest artifacts
-        uses: actions/download-artifact@v5
+#      - name: Download all systemtest artifacts
+#        uses: actions/download-artifact@v5
+#        with:
+#          # TODO: remove
+#          pattern: systemtests-artifacts-*
+#          merge-multiple: true
+#          path: ./all-systemtest-artifacts
+
+      - name: Download artifacts
+        id: download-arch-artifact
+        uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5
         with:
-          # TODO: remove
-          run-id: 18590164310
-          github-token: ${{ env.GITHUB_TOKEN }}
-          pattern: systemtests-artifacts-*
-          merge-multiple: true
+          github_token: ${{ env.GH_TOKEN }}
+          workflow: systemtests.yml
+          workflow_conclusion: success
+          run_id: 18590164310
+          skip_unpack: false
+          repo: ${{ env.REPO }}
           path: ./all-systemtest-artifacts
+          merge_multiple: true
+          name: systemtests-artifacts-.*
+          name_is_regexp: true
 
       - name: Get current PR number
         run: |
