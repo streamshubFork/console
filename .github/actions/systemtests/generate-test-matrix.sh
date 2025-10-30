@@ -13,21 +13,35 @@ if [[ -n "$TESTCASE" ]]; then
 fi
 
 # --- CASE 2: specific profile provided ---
-echo "No specific testcase provided, generating matrix..."
-FILES=$(find systemtests/src/test/java -type f -name '*ST.java' ! -name 'AbstractST.java')
+if [[ -n "$PROFILE" ]]; then
+  echo "Profile detected: $PROFILE, extracting testcases from Maven..."
 
-MATRIX="["
-SEP=""
-for f in $FILES; do
-  NAME=$(basename "$f" .java)
-  if [[ -n "$PROFILE" ]]; then
-    MATRIX+="${SEP}{\"testcase\":\"$NAME\",\"profile\":\"$PROFILE\"}"
-  else
-    MATRIX+="${SEP}{\"testcase\":\"$NAME\"}"
+  MVN_OUTPUT=$(mvn clean verify -B -q -pl systemtests -P "$PROFILE" \
+    | grep -A1 "TEST CLASSES TO BE EXECUTED" \
+    | tail -n1 \
+    | tr ',' '\n' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | grep -E '^[A-Za-z0-9]+ST$' \
+    | sort)
+
+  if [[ -z "$MVN_OUTPUT" ]]; then
+    echo "❌ ERROR: No testclasses found for profile $PROFILE"
+    exit 1
   fi
-  SEP=","
-done
-MATRIX+="]"
 
-echo "Matrix: $MATRIX"
-echo "matrix={\"include\":$MATRIX}" >> "$GITHUB_OUTPUT"
+  MATRIX="["
+  SEP=""
+  for TEST in $MVN_OUTPUT; do
+    MATRIX+="${SEP}{\"testcase\":\"$TEST\",\"profile\":\"$PROFILE\"}"
+    SEP=","
+  done
+  MATRIX+="]"
+
+  echo "Matrix: $MATRIX"
+  echo "matrix={\"include\":$MATRIX}" >> "$GITHUB_OUTPUT"
+  exit 0
+fi
+
+# --- CASE 3: no TESTCASE nor PROFILE ---
+echo "❌ ERROR: Neither TESTCASE nor PROFILE is set. Cannot generate matrix."
+exit 1
