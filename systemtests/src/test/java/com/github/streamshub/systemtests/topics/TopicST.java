@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class TopicST extends AbstractST {
     private static final Logger LOGGER = LogWrapper.getLogger(TopicST.class);
-    private static final String VARIOUS_TOPIC_TYPES_BUCKET = "VariousTopicTypes";
+    private static final String VARIOUS_TOPIC_TYPES_BUCKET = "VariousTopicTypess";
     private TestCaseConfig tcc;
 
     // Topics
