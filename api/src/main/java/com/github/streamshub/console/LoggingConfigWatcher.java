@@ -1,5 +1,13 @@
 package com.github.streamshub.console;
 
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.context.ManagedExecutor;
+import org.jboss.logging.Logger;
+import org.jboss.logmanager.LogContext;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,21 +30,13 @@ import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import jakarta.enterprise.event.Observes;
-import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
-
-import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.eclipse.microprofile.context.ManagedExecutor;
-import org.jboss.logging.Logger;
-import org.jboss.logmanager.LogContext;
-
 @Singleton
 public class LoggingConfigWatcher {
 
     private static final Logger LOGGER = Logger.getLogger(LoggingConfigWatcher.class);
 
     private static final String RECONFIG_FILE_ADDED = "Log configuration override found: %s";
+
     private static final String RECONFIG_FILE_MODIFIED = "Reconfiguration triggered; reason: log configuration has been modified: %s";
     private static final String RECONFIG_FILE_MISSING = "Reconfiguration triggered; reason: log configuration file is no longer present: %s";
 

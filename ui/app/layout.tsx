@@ -5,6 +5,7 @@ type Props = {
 };
 
 //export const fetchCache = "force-no-store";
+
 //export const dynamic = "force-dynamic";
 
 // Since we have a `not-found.tsx` page on the root, a layout file
