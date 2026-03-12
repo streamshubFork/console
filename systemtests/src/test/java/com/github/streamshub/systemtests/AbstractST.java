@@ -29,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 @TestMethodOrder(BucketMethodsOrderRandomizer.class)
 public abstract class AbstractST {
     private static boolean initialized = false;
+
     // Operators
     protected final StrimziOperatorSetup strimziOperatorSetup = new StrimziOperatorSetup(Constants.CO_NAMESPACE);
     protected final ConsoleOperatorSetup consoleOperatorSetup = new ConsoleOperatorSetup(Constants.CO_NAMESPACE);
