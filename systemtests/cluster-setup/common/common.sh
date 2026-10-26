@@ -88,6 +88,8 @@ install_kubectl() {
   esac
 }
 
+ensure_installed kubectl install_kubectl
+
 # macOS has no native container runtime: docker there needs a Linux VM
 # behind it. Installs colima (+ docker CLI and buildx, which
 # common/build-console.sh needs for `docker build --load`) via brew.
