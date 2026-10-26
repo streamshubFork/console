@@ -39,6 +39,7 @@ public abstract class AbstractST {
             SetupUtils.initializeSystemTests();
             initialized = true;
             // meaningless change to trigger build
+            // trigger 2
         }
 
         KubeResourceManager.get().setTestContext(extensionContext);
