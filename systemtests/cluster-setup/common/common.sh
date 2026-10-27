@@ -133,21 +133,23 @@ ensure_docker_engine() {
     colima list
   fi
 
-  export_docker_host
+  link_docker_socket
 }
 
-# skopeo's docker-daemon: transport doesn't understand docker contexts, only
-# DOCKER_HOST / /var/run/docker.sock. On macOS, colima and Docker Desktop
-# put the socket elsewhere and rely on the active context, so export that
-# context's endpoint for child processes (skopeo in build-console.sh).
-export_docker_host() {
-  if [ "${OS_NAME}" != "Darwin" ] || [ -n "${DOCKER_HOST:-}" ] || ! command -v docker >/dev/null 2>&1; then
+# skopeo's docker-daemon: transport ignores docker contexts and DOCKER_HOST and
+# only talks to /var/run/docker.sock. On macOS, colima (and Docker Desktop) put
+# the socket elsewhere and rely on the active context, so point
+# /var/run/docker.sock at it (skopeo in build-console.sh and load-images.sh).
+link_docker_socket() {
+  if [ "${OS_NAME}" != "Darwin" ] || [ -S /var/run/docker.sock ] || ! command -v docker >/dev/null 2>&1; then
     return 0
   fi
-  local host
+  local host sock
   host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
-  if [ -n "${host}" ]; then
-    export DOCKER_HOST="${host}"
+  sock="${host#unix://}"
+  if [ "${sock}" != "${host}" ] && [ -S "${sock}" ]; then
+    echo "Linking /var/run/docker.sock -> ${sock} (for skopeo's docker-daemon: transport)"
+    sudo ln -sf "${sock}" /var/run/docker.sock
   fi
 }
 

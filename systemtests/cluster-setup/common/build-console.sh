@@ -24,7 +24,7 @@ PROJECT_ROOT="$(cd ../../.. && pwd)"
 source ./common.sh
 # modify-bundle-metadata.sh (below) needs skopeo to inspect the built images
 ensure_installed skopeo install_skopeo
-export_docker_host
+link_docker_socket
 
 REGISTRY="${IMAGE_REGISTRY:-localhost:5000}"
 GROUP="${IMAGE_GROUP:-streamshub}"
