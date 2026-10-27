@@ -64,6 +64,10 @@ else
 fi
 
 echo "Waiting for ingress-nginx controller (first-time image pulls can take several minutes)..."
+# `kubectl wait --selector` errors out ("no matching resources found") if the
+# Deployment hasn't created its pod yet, which `apply` returning doesn't guarantee.
+# `rollout status` blocks until the pod exists and is available.
+kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=600s
 kubectl -n ingress-nginx wait --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller --timeout=600s
 
