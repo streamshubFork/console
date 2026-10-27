@@ -87,7 +87,15 @@ fi
 rm -f "${KIND_CONFIG}"
 
 kubectl config use-context "${KIND_CONTEXT}" >/dev/null
-kubectl wait --for=condition=Ready node --all --timeout=300s
+if ! kubectl wait --for=condition=Ready node --all --timeout=900s; then
+  echo "Node did not become Ready; collecting diagnostics..." >&2
+  kubectl get nodes -o wide || true
+  kubectl get pods -A -o wide || true
+  kubectl describe nodes | tail -60 || true
+  "${CONTAINER_ENGINE}" exec "${CLUSTER_NAME}-control-plane" \
+    journalctl -u kubelet --no-pager 2>/dev/null | tail -80 || true
+  exit 1
+fi
 
 if kubectl get deployment -n ingress-nginx ingress-nginx-controller >/dev/null 2>&1; then
   echo "ingress-nginx already installed, skipping"

@@ -41,8 +41,8 @@ jobs:
             cluster: kind
             container_engine: docker
             experimental: true
-            colima_cpus: '2'
-            colima_memory: '8'
+            colima_cpus: '3'
+            colima_memory: '10'
             colima_vm_type: 'vz'
     env:
       CONTAINER_ENGINE: ${{ matrix.container_engine }}
