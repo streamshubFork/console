@@ -28,6 +28,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 PROJECT_ROOT="$(cd ../../.. && pwd)"
 source ./common.sh
+ensure_installed envsubst install_envsubst
 
 CATALOG_IMAGE=""
 CATALOG_NAMESPACE="olm"

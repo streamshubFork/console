@@ -90,6 +90,18 @@ install_kubectl() {
 
 ensure_installed kubectl install_kubectl
 
+# Installs kind — only needed by kind/*.sh. GitHub's Linux runners ship it;
+# macOS runners don't.
+install_kind() {
+  case "${OS_NAME}" in
+    Darwin) brew install kind ;;
+    *)
+      echo "'kind' not found in PATH. Install it: https://kind.sigs.k8s.io/docs/user/quick-start/#installation" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # macOS has no native container runtime: docker there needs a Linux VM
 # behind it. Installs colima (+ docker CLI and buildx, which
 # common/build-console.sh needs for `docker build --load`) via brew.
@@ -118,6 +130,30 @@ ensure_docker_engine() {
     echo "No docker daemon reachable — starting colima with ${cpus} CPUs / ${mem}GB memory..."
     colima start --cpu "${cpus}" --memory "${mem}"
   fi
+
+  export_docker_host
+}
+
+# skopeo's docker-daemon: transport doesn't understand docker contexts, only
+# DOCKER_HOST / /var/run/docker.sock. On macOS, colima and Docker Desktop
+# put the socket elsewhere and rely on the active context, so export that
+# context's endpoint for child processes (skopeo in build-console.sh).
+export_docker_host() {
+  if [ "${OS_NAME}" != "Darwin" ] || [ -n "${DOCKER_HOST:-}" ] || ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  local host
+  host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+  if [ -n "${host}" ]; then
+    export DOCKER_HOST="${host}"
+  fi
+}
+
+# envsubst (gettext) — used by deploy-example-console.sh. Linux runners ship
+# it; macOS runners may not.
+install_envsubst() {
+  brew install gettext
+  brew link --force gettext
 }
 
 # Installs skopeo — needed by both kind/load-images.sh and

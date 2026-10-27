@@ -37,3 +37,4 @@ release.properties
 systemtests/screenshots/
 systemtests/config-local.yaml
 systemtests/tracing/
+/systemtests/.sonar/spring-context-model.json

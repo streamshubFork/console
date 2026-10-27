@@ -20,6 +20,7 @@ if [ -z "${CONTAINER_ENGINE:-}" ]; then
 fi
 
 ensure_installed kubectl install_kubectl
+ensure_installed kind install_kind
 ensure_docker_engine
 
 CLUSTER_NAME="${CLUSTER_NAME:-console-local}"
