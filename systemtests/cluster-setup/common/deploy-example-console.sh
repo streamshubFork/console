@@ -160,6 +160,11 @@ kubectl -n "${KAFKA_NAMESPACE}" wait --for=condition=Ready "kafka/${KAFKA_NAME}"
 
 # --- 5. Console instance (examples/console/*.yaml) --------------------------
 export KAFKA_NAMESPACE
+# The Console instance is deployed to the same namespace as Kafka here
+export CONSOLE_NAMESPACE="${KAFKA_NAMESPACE}"
+
+echo "Applying examples/console/kafkauser-role-rolebinding.yaml..."
+cat ../../../examples/console/kafkauser-role-rolebinding.yaml | envsubst | kubectl apply -n "${KAFKA_NAMESPACE}" -f -
 
 echo "Applying examples/console/010-Console-example.yaml..."
 cat ../../../examples/console/010-Console-example.yaml | envsubst | kubectl apply -n "${KAFKA_NAMESPACE}" -f -

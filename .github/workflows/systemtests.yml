@@ -6,9 +6,6 @@ on:
       commit_sha:
         description: 'Commit sha'
         required: true
-      artifacts_run_id:
-        description: 'Run ID of the integration workflow to download artifacts from'
-        required: true
       testcase:
         description: 'Test case to run'
         required: false
@@ -73,7 +70,6 @@ jobs:
       TEST_CASE: ${{ matrix.testcase }}
       PROFILE: ${{ matrix.profile }}
       COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
-      ARTIFACTS_RUN_ID: ${{ github.event.inputs.artifacts_run_id }}
       GH_TOKEN: ${{ secrets.BOT_ORG_SCOPED_TOKEN }}
       REPO: ${{ github.repository }}
       INSTALL_TYPE: ${{ github.event.inputs.install_type }}

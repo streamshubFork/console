@@ -21,6 +21,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 PROJECT_ROOT="$(cd ../../.. && pwd)"
 
+source ./common.sh
+# modify-bundle-metadata.sh (below) needs skopeo to inspect the built images
+ensure_installed skopeo install_skopeo
+
 REGISTRY="${IMAGE_REGISTRY:-localhost:5000}"
 GROUP="${IMAGE_GROUP:-streamshub}"
 TAG="${IMAGE_TAG:-}"

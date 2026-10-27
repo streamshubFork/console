@@ -19,6 +19,9 @@ if [ -z "${CONTAINER_ENGINE:-}" ]; then
   fi
 fi
 
+ensure_installed kubectl install_kubectl
+ensure_docker_engine
+
 CLUSTER_NAME="${CLUSTER_NAME:-console-local}"
 INGRESS_HTTP_PORT="${INGRESS_HTTP_PORT:-80}"
 INGRESS_HTTPS_PORT="${INGRESS_HTTPS_PORT:-443}"

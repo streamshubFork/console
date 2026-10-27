@@ -67,6 +67,57 @@ ensure_installed() {
   "${installer}"
 }
 
+# Installs kubectl — every script here calls it directly. GitHub's Linux
+# runners ship it, macOS runners don't.
+install_kubectl() {
+  local arch
+  case "${OS_NAME}" in
+    Darwin)
+      brew install kubernetes-cli
+      ;;
+    Linux)
+      case "$(uname -m)" in
+        arm64|aarch64) arch=arm64 ;;
+        x86_64|amd64)  arch=amd64 ;;
+        *) echo "Unsupported architecture for kubectl auto-install: $(uname -m)." >&2; exit 1 ;;
+      esac
+      curl -Lo /tmp/kubectl "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/${arch}/kubectl"
+      chmod +x /tmp/kubectl
+      sudo mv /tmp/kubectl /usr/local/bin/kubectl
+      ;;
+  esac
+}
+
+# macOS has no native container runtime: docker there needs a Linux VM
+# behind it. Installs colima (+ docker CLI and buildx, which
+# common/build-console.sh needs for `docker build --load`) via brew.
+install_docker_colima() {
+  brew install docker docker-buildx colima
+  mkdir -p ~/.docker/cli-plugins
+  ln -sfn "$(brew --prefix)/opt/docker-buildx/bin/docker-buildx" ~/.docker/cli-plugins/docker-buildx
+}
+
+# macOS + CONTAINER_ENGINE=docker only: installs docker/colima if docker is
+# missing, and starts colima if no daemon is reachable. A no-op when Docker
+# Desktop (or an already-running colima) provides the daemon. The VM must
+# fit the minikube node, so size it with COLIMA_CPUS / COLIMA_MEMORY (GB);
+# defaults match the podman machine sizing above (host - 1 CPU, host - 4GB).
+# Call after CONTAINER_ENGINE has been determined.
+ensure_docker_engine() {
+  if [ "${OS_NAME}" != "Darwin" ] || [ "${CONTAINER_ENGINE}" != "docker" ]; then
+    return 0
+  fi
+
+  ensure_installed docker install_docker_colima
+
+  if ! docker info >/dev/null 2>&1 && command -v colima >/dev/null 2>&1; then
+    local cpus="${COLIMA_CPUS:-$(detect_default_cpus)}"
+    local mem="${COLIMA_MEMORY:-$(( $(detect_default_memory_mb) / 1024 ))}"
+    echo "No docker daemon reachable — starting colima with ${cpus} CPUs / ${mem}GB memory..."
+    colima start --cpu "${cpus}" --memory "${mem}"
+  fi
+}
+
 # Installs skopeo — needed by both kind/load-images.sh and
 # minikube/load-images.sh to push built images into the local registry.
 # On Linux, also applies the AppArmor tweak skopeo needs to actually work

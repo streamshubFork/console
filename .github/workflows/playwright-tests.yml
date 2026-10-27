@@ -35,8 +35,8 @@ jobs:
       - name: Create minikube cluster
         working-directory: systemtests/cluster-setup
         env:
-          MINIKUBE_CPU_COUNT: '2'
-          MINIKUBE_MEMORY: '8g'
+          MINIKUBE_CPU_COUNT: '3'
+          MINIKUBE_MEMORY: '10g'
           MINIKUBE_EXTRA_ADDONS: 'storage,ingress-dns,metrics-server'
           MINIKUBE_INSECURE_REGISTRY: 'localhost:5000,10.0.0.0/24'
           MINIKUBE_EXTRA_CONFIG: 'kubeadm.ignore-preflight-errors=SystemVerification;apiserver.authorization-mode=RBAC,Node'
@@ -64,6 +64,9 @@ jobs:
       - name: Deploy Strimzi, Console operator, Kafka, and Console instance
         working-directory: systemtests/cluster-setup
         run: |
+          # create-cluster.sh records the real cluster domain (<minikube-ip>.nip.io on Linux) here;
+          # without it deploy-example-console.sh falls back to 127.0.0.1.nip.io, which isn't routable in-cluster
+          source minikube/.cluster-env
           ./common/deploy-example-console.sh \
             --catalog-image "localhost:5000/streamshub/console-operator-catalog:${{ env.PROJECT_VERSION }}" \
             --kafka-namespace "${TARGET_NAMESPACE}"

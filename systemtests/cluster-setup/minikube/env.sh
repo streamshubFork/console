@@ -57,6 +57,9 @@ if [ -z "${CONTAINER_ENGINE:-}" ]; then
   fi
 fi
 
+ensure_installed kubectl install_kubectl
+ensure_docker_engine
+
 CLUSTER_NAME="${CLUSTER_NAME:-console-minikube}"
 CONSOLE_CLUSTER_DOMAIN="${CONSOLE_CLUSTER_DOMAIN:-127.0.0.1.nip.io}"
 
