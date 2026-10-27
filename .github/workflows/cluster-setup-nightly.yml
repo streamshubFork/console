@@ -103,14 +103,6 @@ jobs:
         working-directory: systemtests/cluster-setup
         run: ./${{ matrix.cluster }}/load-images.sh
 
-      - name: Pre-load images into kind node
-        if: matrix.cluster == 'kind'
-        run: |
-          for img in registry.k8s.io/e2e-test-images/agnhost:2.53 <olm-image> <other-images>; do
-            docker pull "$img"
-            kind load docker-image "$img" --name console-local
-          done
-
       - name: Deploy Strimzi, Console operator, Kafka, and Console instance
         working-directory: systemtests/cluster-setup
         env:

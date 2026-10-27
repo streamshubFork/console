@@ -39,20 +39,24 @@ if [ "${KIND_ETCD_TMPFS}" = true ]; then
         etcd:
           local:
             dataDir: /tmp/etcd"
+fi
 
 # Leader-elected components (controller-manager, scheduler) crash-loop when etcd stalls
 # long enough that they can't renew their lease. Give them more headroom on slow runners.
-  LEADER_ELECT_PATCH="      - |
+LEADER_ELECT_PATCH="      - |
         kind: ClusterConfiguration
         controllerManager:
           extraArgs:
-            leader-elect-lease-duration: 60s
-            leader-elect-renew-deadline: 40s
+            - name: leader-elect-lease-duration
+              value: 60s
+            - name: leader-elect-renew-deadline
+              value: 40s
         scheduler:
           extraArgs:
-            leader-elect-lease-duration: 60s
-            leader-elect-renew-deadline: 40s"
-fi
+            - name: leader-elect-lease-duration
+              value: 60s
+            - name: leader-elect-renew-deadline
+              value: 40s"
 
 cat > "${KIND_CONFIG}" <<EOF
 kind: Cluster
