@@ -151,6 +151,11 @@ jobs:
       - name: Collect macOS VM and host diagnostics on failure
         if: failure() && runner.os == 'macOS'
         run: |
+          echo "=== kind node logs (kubelet / apiserver / etcd) ==="
+          kind export logs /tmp/kind-logs --name console-local || true
+          for f in /tmp/kind-logs/*/kubelet.log /tmp/kind-logs/*/containers/kube-apiserver-*.log /tmp/kind-logs/*/containers/etcd-*.log; do
+            [ -f "${f}" ] && { echo "--- ${f} ---"; tail -n 80 "${f}"; }
+          done
           echo "=== colima ==="
           colima list || true
           colima status || true

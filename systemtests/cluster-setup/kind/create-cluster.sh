@@ -36,6 +36,14 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
+        # kubeadm's defaults (1 min for API calls, 4 min for control-plane health) are too
+        # tight on small/nested-virtualization CI VMs (e.g. colima on a macOS runner), where
+        # the API server can take longer than that to come up ("connection refused" on :6443).
+        timeouts:
+          kubernetesAPICall: 10m
+          controlPlaneComponentHealthCheck: 10m
+          etcdAPICall: 5m
+          kubeletHealthCheck: 10m
     extraPortMappings:
       - containerPort: 80
         hostPort: ${INGRESS_HTTP_PORT}
@@ -49,7 +57,14 @@ if kind get clusters 2>/dev/null | grep -qx "${CLUSTER_NAME}"; then
   echo "kind cluster '${CLUSTER_NAME}' already exists, skipping create"
 else
   echo "Creating kind cluster '${CLUSTER_NAME}' (engine=${CONTAINER_ENGINE}, ports ${INGRESS_HTTP_PORT}/${INGRESS_HTTPS_PORT})..."
-  kind create cluster --config "${KIND_CONFIG}"
+  # One retry: on slow hosts the first attempt can still lose the race against the API
+  # server start-up (the node image is cached by then, so the retry is much faster).
+  if ! kind create cluster --config "${KIND_CONFIG}" --wait 0; then
+    echo "kind create cluster failed — cleaning up and retrying once..." >&2
+    kind delete cluster --name "${CLUSTER_NAME}" || true
+    # --retain keeps the failed node around so its logs can be exported for diagnostics
+    kind create cluster --config "${KIND_CONFIG}" --wait 0 --retain
+  fi
 fi
 rm -f "${KIND_CONFIG}"
 
