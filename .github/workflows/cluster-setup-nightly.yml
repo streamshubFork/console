@@ -33,16 +33,12 @@ jobs:
             experimental: false
             minikube_cpus: '3'
             minikube_memory: '10g'
-          # Intel runner (4 CPU / 14 GB RAM / 14 GB disk): Apple-silicon runners can't run the
-          # nested VM colima needs. macos-15-intel rather than -26: the latter is Homebrew Tier 3
-          # (no bottles). kind rather than minikube: one lightweight node container, no minikube
-          # VM-in-VM startup. colima gets 3 of 4 CPUs and 10 of 14 GB, leaving the host headroom.
-          - os: macos-15-intel
+          - os: macos-15-large
             cluster: kind
             container_engine: docker
             experimental: true
-            colima_cpus: '3'
-            colima_memory: '10'
+            colima_cpus: '6'
+            colima_memory: '16'
             colima_vm_type: 'vz'
     env:
       CONTAINER_ENGINE: ${{ matrix.container_engine }}
@@ -104,6 +100,8 @@ jobs:
 
       - name: Deploy Strimzi, Console operator, Kafka, and Console instance
         working-directory: systemtests/cluster-setup
+        env:
+          KAFKA_REPLICAS: ${{ matrix.kafka_replicas }}
         run: |
           source ${{ matrix.cluster }}/.cluster-env
           TAG=$(cd ../.. && mvn help:evaluate -Dexpression=project.version -q -DforceStdout | tr '[:upper:]' '[:lower:]')
