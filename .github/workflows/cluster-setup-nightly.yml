@@ -43,6 +43,7 @@ jobs:
             experimental: true
             colima_cpus: '3'
             colima_memory: '10'
+            colima_vm_type: 'vz'
     env:
       CONTAINER_ENGINE: ${{ matrix.container_engine }}
     steps:
@@ -81,6 +82,7 @@ jobs:
         env:
           COLIMA_CPUS: ${{ matrix.colima_cpus }}
           COLIMA_MEMORY: ${{ matrix.colima_memory }}
+          COLIMA_VM_TYPE: ${{ matrix.colima_vm_type }}
           MINIKUBE_CPU_COUNT: ${{ matrix.minikube_cpus }}
           MINIKUBE_MEMORY: ${{ matrix.minikube_memory }}
           MINIKUBE_EXTRA_ADDONS: 'storage,ingress-dns,metrics-server'

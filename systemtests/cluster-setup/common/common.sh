@@ -127,8 +127,10 @@ ensure_docker_engine() {
   if ! docker info >/dev/null 2>&1 && command -v colima >/dev/null 2>&1; then
     local cpus="${COLIMA_CPUS:-$(detect_default_cpus)}"
     local mem="${COLIMA_MEMORY:-$(( $(detect_default_memory_mb) / 1024 ))}"
-    echo "No docker daemon reachable — starting colima with ${cpus} CPUs / ${mem}GB memory..."
-    colima start --cpu "${cpus}" --memory "${mem}"
+    echo "No docker daemon reachable — starting colima with ${cpus} CPUs / ${mem}GB memory (vm-type: ${COLIMA_VM_TYPE:-default})..."
+    # COLIMA_VM_TYPE (qemu|vz) is optional; unquoted expansion on purpose so it vanishes when unset
+    colima start --cpu "${cpus}" --memory "${mem}" ${COLIMA_VM_TYPE:+--vm-type ${COLIMA_VM_TYPE}}
+    colima list
   fi
 
   export_docker_host
