@@ -127,13 +127,29 @@ ensure_docker_engine() {
   if ! docker info >/dev/null 2>&1 && command -v colima >/dev/null 2>&1; then
     local cpus="${COLIMA_CPUS:-$(detect_default_cpus)}"
     local mem="${COLIMA_MEMORY:-$(( $(detect_default_memory_mb) / 1024 ))}"
-    echo "No docker daemon reachable — starting colima with ${cpus} CPUs / ${mem}GB memory (vm-type: ${COLIMA_VM_TYPE:-default})..."
+    local vm_type="${COLIMA_VM_TYPE:-}"
+    echo "No docker daemon reachable — starting colima with ${cpus} CPUs / ${mem}GB memory (vm-type: ${vm_type:-default})..."
     # COLIMA_VM_TYPE (qemu|vz) is optional; unquoted expansion on purpose so it vanishes when unset
-    colima start --cpu "${cpus}" --memory "${mem}" ${COLIMA_VM_TYPE:+--vm-type ${COLIMA_VM_TYPE}}
+    if ! colima start --cpu "${cpus}" --memory "${mem}" ${vm_type:+--vm-type ${vm_type}}; then
+      # vz needs working nested virtualization (not available on every CI runner);
+      # retry once from a clean state with the slower but more portable qemu.
+      if [ "${vm_type}" != "qemu" ]; then
+        echo "colima start failed with vm-type '${vm_type:-default}' — retrying with qemu..." >&2
+        colima delete --force || true
+        colima start --cpu "${cpus}" --memory "${mem}" --vm-type qemu
+      else
+        return 1
+      fi
+    fi
     colima list
   fi
 
   link_docker_socket
+
+  if ! docker info >/dev/null 2>&1; then
+    echo "docker daemon is still not reachable after start-up" >&2
+    return 1
+  fi
 }
 
 # skopeo's docker-daemon: transport ignores docker contexts and DOCKER_HOST and
@@ -147,9 +163,15 @@ link_docker_socket() {
   local host sock
   host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
   sock="${host#unix://}"
-  if [ "${sock}" != "${host}" ] && [ -S "${sock}" ]; then
+  if [ "${sock}" = "${host}" ] || [ ! -S "${sock}" ]; then
+    # Context lookup failed or points nowhere: fall back to colima's default socket
+    sock="${HOME}/.colima/default/docker.sock"
+  fi
+  if [ -S "${sock}" ]; then
     echo "Linking /var/run/docker.sock -> ${sock} (for skopeo's docker-daemon: transport)"
     sudo ln -sf "${sock}" /var/run/docker.sock
+  else
+    echo "WARNING: no docker socket found to link to /var/run/docker.sock; skopeo's docker-daemon: transport will fail" >&2
   fi
 }
 

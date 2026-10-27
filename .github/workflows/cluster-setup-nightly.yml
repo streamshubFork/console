@@ -33,12 +33,16 @@ jobs:
             experimental: false
             minikube_cpus: '3'
             minikube_memory: '10g'
-          - os: macos-15-large
+          # Standard `macos-15` is an arm64 runner with only 3 CPUs / 7GB RAM and no nested
+          # virtualization, so a colima VM (8GB) can't fit and starves the runner ("lost
+          # communication with the server"). macos-15-intel has 4 CPUs / 14GB RAM and
+          # Hypervisor.framework support: 2 CPUs / 8GB for the VM leaves headroom for the host.
+          - os: macos-15-intel
             cluster: kind
             container_engine: docker
             experimental: true
-            colima_cpus: '6'
-            colima_memory: '16'
+            colima_cpus: '2'
+            colima_memory: '8'
             colima_vm_type: 'vz'
     env:
       CONTAINER_ENGINE: ${{ matrix.container_engine }}
