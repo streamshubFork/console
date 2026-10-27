@@ -241,5 +241,5 @@ jobs:
         run: npm run test-storybook
 
   Playwright:
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'safe to test') || github.repository == 'streamshub/console' }}
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'safe to test') || github.repository == 'streamshubFork/console' }}
     uses: ./.github/workflows/playwright-tests.yml
