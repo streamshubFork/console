@@ -24,6 +24,23 @@ fi
 
 KIND_CONFIG=$(mktemp)
 
+# etcd fsyncs on every write. On macOS the container engine's disk is a file-backed virtual disk
+# (colima/lima, Docker Desktop) and on CI runners it can be so slow that etcd requests take
+# seconds ("apply request took too long"), the API server times out and the node never goes
+# Ready. The kind node's /tmp is a tmpfs, so keep etcd's data there. Fine for a throwaway
+# cluster; it just won't survive the node container restarting. Set KIND_ETCD_TMPFS=false to
+# opt out. Defaults to on only for macOS.
+KIND_ETCD_TMPFS="${KIND_ETCD_TMPFS:-${NEEDS_LOCAL_PORT_FORWARD}}"
+ETCD_PATCH=""
+if [ "${KIND_ETCD_TMPFS}" = true ]; then
+  echo "Keeping etcd data on the kind node's tmpfs (/tmp/etcd) to avoid slow-disk fsync stalls"
+  ETCD_PATCH="      - |
+        kind: ClusterConfiguration
+        etcd:
+          local:
+            dataDir: /tmp/etcd"
+fi
+
 cat > "${KIND_CONFIG}" <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -44,6 +61,7 @@ nodes:
           controlPlaneComponentHealthCheck: 10m
           etcdAPICall: 5m
           kubeletHealthCheck: 10m
+${ETCD_PATCH}
     extraPortMappings:
       - containerPort: 80
         hostPort: ${INGRESS_HTTP_PORT}
@@ -69,7 +87,7 @@ fi
 rm -f "${KIND_CONFIG}"
 
 kubectl config use-context "${KIND_CONTEXT}" >/dev/null
-kubectl wait --for=condition=Ready node --all --timeout=120s
+kubectl wait --for=condition=Ready node --all --timeout=300s
 
 if kubectl get deployment -n ingress-nginx ingress-nginx-controller >/dev/null 2>&1; then
   echo "ingress-nginx already installed, skipping"
