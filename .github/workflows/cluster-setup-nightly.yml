@@ -165,6 +165,9 @@ jobs:
       - name: Collect diagnostics on failure
         if: failure()
         run: |
+          echo "=== OLM packageserver CSV and APIService ==="
+          kubectl -n olm get csv packageserver -o yaml || true
+          kubectl get apiservice v1.packages.operators.coreos.com -o yaml || true
           echo "=== All pods ==="
           kubectl get pods -A -o wide || true
           echo "=== Recent events ==="

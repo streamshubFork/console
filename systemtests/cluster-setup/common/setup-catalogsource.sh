@@ -117,7 +117,13 @@ else
   [ "${ACTUAL_SHA256}" = "${OLM_SCRIPT_SHA256}" ] \
     || { echo "OLM install script hash verification failed (got ${ACTUAL_SHA256})" >&2; exit 1; }
   chmod +x "${OLM_INSTALL_SCRIPT}"
-  "${OLM_INSTALL_SCRIPT}" "${OLM_VERSION}"
+  # install.sh gives the packageserver CSV only ~5 minutes to reach Succeeded and
+  # exits 1 otherwise. On a slow host (e.g. a nested-VM macOS runner) image pulls
+  # alone can exceed that while OLM is still retrying, so don't treat its timeout
+  # as fatal: wait on the CSV ourselves with a longer limit below.
+  "${OLM_INSTALL_SCRIPT}" "${OLM_VERSION}" \
+    || echo "install.sh did not see packageserver reach Succeeded in its own ~5min window; waiting longer..." >&2
+  kubectl -n olm wait csv/packageserver --for=jsonpath='{.status.phase}'=Succeeded --timeout=600s
 
   echo "Waiting for OLM core deployments to become available..."
   kubectl -n olm wait --for=condition=available deployment/olm-operator --timeout=180s
