@@ -39,6 +39,19 @@ if [ "${KIND_ETCD_TMPFS}" = true ]; then
         etcd:
           local:
             dataDir: /tmp/etcd"
+
+# Leader-elected components (controller-manager, scheduler) crash-loop when etcd stalls
+# long enough that they can't renew their lease. Give them more headroom on slow runners.
+  LEADER_ELECT_PATCH="      - |
+        kind: ClusterConfiguration
+        controllerManager:
+          extraArgs:
+            leader-elect-lease-duration: 60s
+            leader-elect-renew-deadline: 40s
+        scheduler:
+          extraArgs:
+            leader-elect-lease-duration: 60s
+            leader-elect-renew-deadline: 40s"
 fi
 
 cat > "${KIND_CONFIG}" <<EOF
@@ -62,6 +75,7 @@ nodes:
           etcdAPICall: 5m
           kubeletHealthCheck: 10m
 ${ETCD_PATCH}
+${LEADER_ELECT_PATCH}
     extraPortMappings:
       - containerPort: 80
         hostPort: ${INGRESS_HTTP_PORT}
@@ -96,6 +110,8 @@ if ! kubectl wait --for=condition=Ready node --all --timeout=900s; then
     journalctl -u kubelet --no-pager 2>/dev/null | tail -80 || true
   exit 1
 fi
+
+kubectl -n kube-system wait --for=condition=Ready pod -l tier=control-plane --timeout=300s
 
 if kubectl get deployment -n ingress-nginx ingress-nginx-controller >/dev/null 2>&1; then
   echo "ingress-nginx already installed, skipping"
