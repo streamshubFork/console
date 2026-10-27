@@ -21,16 +21,28 @@ jobs:
     name: minikube-smoke-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
+    # The macOS leg is experimental: a failure there doesn't fail the workflow
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
             container_engine: docker
-          # Intel runner (4 CPU / 14 GB): Apple-silicon runners can't run the nested VM colima needs.
-          # macos-15-intel rather than -26: the latter is Homebrew Tier 3 (no bottles).
+            experimental: false
+            minikube_cpus: '3'
+            minikube_memory: '10g'
+          # Intel runner (4 CPU / 14 GB RAM / 14 GB disk): Apple-silicon runners can't run the
+          # nested VM colima needs. macos-15-intel rather than -26: the latter is Homebrew Tier 3
+          # (no bottles). Sized to leave the host headroom: colima gets 3 of 4 CPUs and 10 of
+          # 14 GB, minikube 8g inside that.
           - os: macos-15-intel
             container_engine: docker
+            experimental: true
+            colima_cpus: '3'
+            colima_memory: '10'
+            minikube_cpus: '3'
+            minikube_memory: '8g'
     env:
       CONTAINER_ENGINE: ${{ matrix.container_engine }}
     steps:
@@ -54,16 +66,23 @@ jobs:
       - name: Fetch Operator Framework Utilities (operator-sdk, opm)
         run: ./operator/bin/fetch-operator-utilities.sh
 
-      # On macOS, create-cluster.sh installs kubectl and docker (colima) and starts colima.
-      # The colima VM must hold the 10g minikube node, so it gets 12 GB of the runner's 14 GB
-      # (ignored on Linux).
+      - name: Log runner resources
+        if: runner.os == 'macOS'
+        run: |
+          echo "CPUs: $(sysctl -n hw.ncpu)"
+          echo "Memory (GB): $(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))"
+          echo "Hypervisor support (kern.hv_support): $(sysctl -n kern.hv_support)"
+          df -h /
+
+      # On macOS, create-cluster.sh installs kubectl and docker (colima) and starts colima
+      # with COLIMA_CPUS / COLIMA_MEMORY (empty and ignored on Linux).
       - name: Create minikube cluster
         working-directory: systemtests/cluster-setup
         env:
-          COLIMA_CPUS: '4'
-          COLIMA_MEMORY: '12'
-          MINIKUBE_CPU_COUNT: '3'
-          MINIKUBE_MEMORY: '10g'
+          COLIMA_CPUS: ${{ matrix.colima_cpus }}
+          COLIMA_MEMORY: ${{ matrix.colima_memory }}
+          MINIKUBE_CPU_COUNT: ${{ matrix.minikube_cpus }}
+          MINIKUBE_MEMORY: ${{ matrix.minikube_memory }}
           MINIKUBE_EXTRA_ADDONS: 'storage,ingress-dns,metrics-server'
           MINIKUBE_INSECURE_REGISTRY: 'localhost:5000,10.0.0.0/24'
           MINIKUBE_EXTRA_CONFIG: 'kubeadm.ignore-preflight-errors=SystemVerification;apiserver.authorization-mode=RBAC,Node'
@@ -124,6 +143,22 @@ jobs:
           echo "HTTP status: ${status}"
           [ "${status}" = "200" ]
           grep -q "StreamsHub Console" /tmp/console.html
+
+      - name: Collect macOS VM and host diagnostics on failure
+        if: failure() && runner.os == 'macOS'
+        run: |
+          echo "=== colima ==="
+          colima list || true
+          colima status || true
+          echo "=== docker info ==="
+          docker info || true
+          echo "=== Host memory ==="
+          vm_stat || true
+          memory_pressure || true
+          echo "=== Host disk ==="
+          df -h || true
+          echo "=== Disk used inside the colima VM ==="
+          colima ssh -- df -h || true
 
       - name: Collect diagnostics on failure
         if: failure()
