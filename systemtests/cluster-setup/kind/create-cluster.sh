@@ -24,6 +24,38 @@ fi
 
 KIND_CONFIG=$(mktemp)
 
+# etcd fsyncs on every write. On macOS the container engine's disk is a file-backed virtual disk
+# (colima/lima, Docker Desktop) and on CI runners it can be so slow that etcd requests take
+# seconds ("apply request took too long"), the API server times out and the node never goes
+# Ready. The kind node's /tmp is a tmpfs, so keep etcd's data there.
+KIND_ETCD_TMPFS="${KIND_ETCD_TMPFS:-${NEEDS_LOCAL_PORT_FORWARD}}"
+ETCD_PATCH=""
+if [ "${KIND_ETCD_TMPFS}" = true ]; then
+  echo "Keeping etcd data on the kind node's tmpfs (/tmp/etcd) to avoid slow-disk fsync stalls"
+  ETCD_PATCH="      - |
+        kind: ClusterConfiguration
+        etcd:
+          local:
+            dataDir: /tmp/etcd"
+fi
+
+# Leader-elected components (controller-manager, scheduler) crash-loop when etcd stalls
+# long enough that they can't renew their lease. Give them more headroom on slow runners.
+LEADER_ELECT_PATCH="      - |
+        kind: ClusterConfiguration
+        controllerManager:
+          extraArgs:
+            - name: leader-elect-lease-duration
+              value: 60s
+            - name: leader-elect-renew-deadline
+              value: 40s
+        scheduler:
+          extraArgs:
+            - name: leader-elect-lease-duration
+              value: 60s
+            - name: leader-elect-renew-deadline
+              value: 40s"
+
 cat > "${KIND_CONFIG}" <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -36,6 +68,17 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
+        # kubeadm's defaults (1 min for API calls, 4 min for control-plane health) are too
+        # tight on small/nested-virtualization CI VMs (e.g. colima on a macOS runner), where
+        # the API server can take longer than that to come up and respond to requests.
+        # On resource-constrained macOS runners, RBAC setup alone can take 10+ minutes.
+        timeouts:
+          kubernetesAPICall: 20m
+          controlPlaneComponentHealthCheck: 15m
+          etcdAPICall: 10m
+          kubeletHealthCheck: 15m
+${ETCD_PATCH}
+${LEADER_ELECT_PATCH}
     extraPortMappings:
       - containerPort: 80
         hostPort: ${INGRESS_HTTP_PORT}
