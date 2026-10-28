@@ -121,8 +121,17 @@ else
   # exits 1 otherwise. On a slow host (e.g. a nested-VM macOS runner) image pulls
   # alone can exceed that while OLM is still retrying, so don't treat its timeout
   # as fatal: wait on the CSV ourselves with a longer limit below.
+  # Also, install.sh uses kubectl's default timeout (~2min) for CRD Established condition,
+  # which is too short on resource-constrained VMs; we wait explicitly with a longer timeout.
   "${OLM_INSTALL_SCRIPT}" "${OLM_VERSION}" \
     || echo "install.sh did not see packageserver reach Succeeded in its own ~5min window; waiting longer..." >&2
+
+  echo "Waiting for OLM CRDs to be Established (can take longer on macOS)..."
+  for crd in catalogsources clusterserviceversions installplans olmconfigs \
+             operatorconditions operatorgroups operators subscriptions; do
+    kubectl wait --for=condition=Established "crd/${crd}.operators.coreos.com" --timeout=300s || true
+  done
+
   kubectl -n olm wait csv/packageserver --for=jsonpath='{.status.phase}'=Succeeded --timeout=600s
 
   echo "Waiting for OLM core deployments to become available..."
