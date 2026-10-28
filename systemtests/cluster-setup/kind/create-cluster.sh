@@ -24,40 +24,6 @@ fi
 
 KIND_CONFIG=$(mktemp)
 
-# etcd fsyncs on every write. On macOS the container engine's disk is a file-backed virtual disk
-# (colima/lima, Docker Desktop) and on CI runners it can be so slow that etcd requests take
-# seconds ("apply request took too long"), the API server times out and the node never goes
-# Ready. The kind node's /tmp is a tmpfs, so keep etcd's data there. Fine for a throwaway
-# cluster; it just won't survive the node container restarting. Set KIND_ETCD_TMPFS=false to
-# opt out. Defaults to on only for macOS.
-KIND_ETCD_TMPFS="${KIND_ETCD_TMPFS:-${NEEDS_LOCAL_PORT_FORWARD}}"
-ETCD_PATCH=""
-if [ "${KIND_ETCD_TMPFS}" = true ]; then
-  echo "Keeping etcd data on the kind node's tmpfs (/tmp/etcd) to avoid slow-disk fsync stalls"
-  ETCD_PATCH="      - |
-        kind: ClusterConfiguration
-        etcd:
-          local:
-            dataDir: /tmp/etcd"
-fi
-
-# Leader-elected components (controller-manager, scheduler) crash-loop when etcd stalls
-# long enough that they can't renew their lease. Give them more headroom on slow runners.
-LEADER_ELECT_PATCH="      - |
-        kind: ClusterConfiguration
-        controllerManager:
-          extraArgs:
-            - name: leader-elect-lease-duration
-              value: 60s
-            - name: leader-elect-renew-deadline
-              value: 40s
-        scheduler:
-          extraArgs:
-            - name: leader-elect-lease-duration
-              value: 60s
-            - name: leader-elect-renew-deadline
-              value: 40s"
-
 cat > "${KIND_CONFIG}" <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -70,16 +36,6 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
-        # kubeadm's defaults (1 min for API calls, 4 min for control-plane health) are too
-        # tight on small/nested-virtualization CI VMs (e.g. colima on a macOS runner), where
-        # the API server can take longer than that to come up ("connection refused" on :6443).
-        timeouts:
-          kubernetesAPICall: 10m
-          controlPlaneComponentHealthCheck: 10m
-          etcdAPICall: 5m
-          kubeletHealthCheck: 10m
-${ETCD_PATCH}
-${LEADER_ELECT_PATCH}
     extraPortMappings:
       - containerPort: 80
         hostPort: ${INGRESS_HTTP_PORT}
@@ -93,29 +49,26 @@ if kind get clusters 2>/dev/null | grep -qx "${CLUSTER_NAME}"; then
   echo "kind cluster '${CLUSTER_NAME}' already exists, skipping create"
 else
   echo "Creating kind cluster '${CLUSTER_NAME}' (engine=${CONTAINER_ENGINE}, ports ${INGRESS_HTTP_PORT}/${INGRESS_HTTPS_PORT})..."
-  # One retry: on slow hosts the first attempt can still lose the race against the API
-  # server start-up (the node image is cached by then, so the retry is much faster).
-  if ! kind create cluster --config "${KIND_CONFIG}" --wait 0; then
-    echo "kind create cluster failed — cleaning up and retrying once..." >&2
-    kind delete cluster --name "${CLUSTER_NAME}" || true
-    # --retain keeps the failed node around so its logs can be exported for diagnostics
-    kind create cluster --config "${KIND_CONFIG}" --wait 0 --retain
-  fi
+  kind create cluster --config "${KIND_CONFIG}"
 fi
 rm -f "${KIND_CONFIG}"
 
 kubectl config use-context "${KIND_CONTEXT}" >/dev/null
-if ! kubectl wait --for=condition=Ready node --all --timeout=900s; then
-  echo "Node did not become Ready; collecting diagnostics..." >&2
+
+echo "Waiting for cluster node to be Ready..."
+if ! kubectl wait --for=condition=Ready node --all --timeout=300s; then
+  echo "ERROR: Node did not become Ready. Collecting diagnostics..." >&2
+  echo "=== Node Status ===" >&2
   kubectl get nodes -o wide || true
+  echo "=== All Pods ===" >&2
   kubectl get pods -A -o wide || true
-  kubectl describe nodes | tail -60 || true
+  echo "=== Node Descriptions ===" >&2
+  kubectl describe nodes || true
+  echo "=== Kubelet Logs ===" >&2
   "${CONTAINER_ENGINE}" exec "${CLUSTER_NAME}-control-plane" \
-    journalctl -u kubelet --no-pager 2>/dev/null | tail -80 || true
+    journalctl -u kubelet --no-pager 2>/dev/null | tail -100 || true
   exit 1
 fi
-
-kubectl -n kube-system wait --for=condition=Ready pod -l tier=control-plane --timeout=300s
 
 if kubectl get deployment -n ingress-nginx ingress-nginx-controller >/dev/null 2>&1; then
   echo "ingress-nginx already installed, skipping"
