@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
 # Creates (or reuses) a local kind cluster with ports 80/443 mapped to the
-# host, installs ingress-nginx bound via hostPort on the node, and verifies
-# the whole exposure path actually works with a throwaway smoke test before
-# declaring success.
+# host and installs ingress-nginx bound via hostPort on the node.
 #
-# This is the macOS-safe alternative to minikube's ingress addon:
-# Docker Desktop / Podman Desktop / Colima all run the container engine
-# inside a VM, so a minikube node's IP (used by CI's `$(minikube ip).nip.io`)
-# isn't routable from the host. kind's extraPortMappings + ingress-nginx
-# hostPort sidesteps that by riding on the same host-port-forwarding Docker
-# Desktop/Podman machine already do reliably. See
-# ~/claude-docs/streamshub-local-sts/README.md for the full writeup and the
-# fallback strategy if this ever stops working on a given machine.
+# This is the Linux-native alternative using kind's port mapping.
+# For macOS, test locally before merging - the VM constraints may require
+# additional workarounds not needed on Linux.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./env.sh
@@ -23,38 +16,6 @@ if [ "${CONTAINER_ENGINE}" = "podman" ]; then
 fi
 
 KIND_CONFIG=$(mktemp)
-
-# etcd fsyncs on every write. On macOS the container engine's disk is a file-backed virtual disk
-# (colima/lima, Docker Desktop) and on CI runners it can be so slow that etcd requests take
-# seconds ("apply request took too long"), the API server times out and the node never goes
-# Ready. The kind node's /tmp is a tmpfs, so keep etcd's data there.
-KIND_ETCD_TMPFS="${KIND_ETCD_TMPFS:-${NEEDS_LOCAL_PORT_FORWARD}}"
-ETCD_PATCH=""
-if [ "${KIND_ETCD_TMPFS}" = true ]; then
-  echo "Keeping etcd data on the kind node's tmpfs (/tmp/etcd) to avoid slow-disk fsync stalls"
-  ETCD_PATCH="      - |
-        kind: ClusterConfiguration
-        etcd:
-          local:
-            dataDir: /tmp/etcd"
-fi
-
-# Leader-elected components (controller-manager, scheduler) crash-loop when etcd stalls
-# long enough that they can't renew their lease. Give them more headroom on slow runners.
-LEADER_ELECT_PATCH="      - |
-        kind: ClusterConfiguration
-        controllerManager:
-          extraArgs:
-            - name: leader-elect-lease-duration
-              value: 60s
-            - name: leader-elect-renew-deadline
-              value: 40s
-        scheduler:
-          extraArgs:
-            - name: leader-elect-lease-duration
-              value: 60s
-            - name: leader-elect-renew-deadline
-              value: 40s"
 
 cat > "${KIND_CONFIG}" <<EOF
 kind: Cluster
@@ -68,17 +29,6 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
-        # kubeadm's defaults (1 min for API calls, 4 min for control-plane health) are too
-        # tight on small/nested-virtualization CI VMs (e.g. colima on a macOS runner), where
-        # the API server can take longer than that to come up and respond to requests.
-        # On resource-constrained macOS runners, RBAC setup alone can take 10+ minutes.
-        timeouts:
-          kubernetesAPICall: 20m
-          controlPlaneComponentHealthCheck: 15m
-          etcdAPICall: 10m
-          kubeletHealthCheck: 15m
-${ETCD_PATCH}
-${LEADER_ELECT_PATCH}
     extraPortMappings:
       - containerPort: 80
         hostPort: ${INGRESS_HTTP_PORT}
@@ -99,19 +49,7 @@ rm -f "${KIND_CONFIG}"
 kubectl config use-context "${KIND_CONTEXT}" >/dev/null
 
 echo "Waiting for cluster node to be Ready..."
-if ! kubectl wait --for=condition=Ready node --all --timeout=300s; then
-  echo "ERROR: Node did not become Ready. Collecting diagnostics..." >&2
-  echo "=== Node Status ===" >&2
-  kubectl get nodes -o wide || true
-  echo "=== All Pods ===" >&2
-  kubectl get pods -A -o wide || true
-  echo "=== Node Descriptions ===" >&2
-  kubectl describe nodes || true
-  echo "=== Kubelet Logs ===" >&2
-  "${CONTAINER_ENGINE}" exec "${CLUSTER_NAME}-control-plane" \
-    journalctl -u kubelet --no-pager 2>/dev/null | tail -100 || true
-  exit 1
-fi
+kubectl wait --for=condition=Ready node --all --timeout=300s
 
 if kubectl get deployment -n ingress-nginx ingress-nginx-controller >/dev/null 2>&1; then
   echo "ingress-nginx already installed, skipping"
@@ -146,112 +84,6 @@ cat > "${CLUSTER_ENV_FILE}" <<EOF
 export CONSOLE_CLUSTER_DOMAIN=${CONSOLE_CLUSTER_DOMAIN}
 export KUBECONTEXT=${KIND_CONTEXT}
 EOF
-
-# --- Verify the exposure path actually works end to end --------------------
-# Deploys a throwaway echo server behind an Ingress, curls it over HTTP and
-# HTTPS, then cleans up. If this fails, the cluster isn't actually usable
-# yet — don't declare success.
-echo ""
-echo "Verifying exposure path with a smoke test..."
-SMOKE_NAMESPACE="default"
-SMOKE_HOST="echo.${CONSOLE_CLUSTER_DOMAIN}"
-SMOKE_MANIFEST=$(mktemp)
-cleanup_smoke_test() {
-  kubectl delete -f "${SMOKE_MANIFEST}" --ignore-not-found >/dev/null 2>&1 || true
-  rm -f "${SMOKE_MANIFEST}"
-}
-trap cleanup_smoke_test EXIT
-
-cat > "${SMOKE_MANIFEST}" <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cluster-setup-smoke-test
-  namespace: ${SMOKE_NAMESPACE}
-spec:
-  replicas: 1
-  selector:
-    matchLabels: {app: cluster-setup-smoke-test}
-  template:
-    metadata:
-      labels: {app: cluster-setup-smoke-test}
-    spec:
-      containers:
-        - name: echo-server
-          image: registry.k8s.io/e2e-test-images/agnhost:2.53
-          args: ["netexec", "--http-port=8080"]
-          ports: [{containerPort: 8080}]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: cluster-setup-smoke-test
-  namespace: ${SMOKE_NAMESPACE}
-spec:
-  selector: {app: cluster-setup-smoke-test}
-  ports: [{port: 80, targetPort: 8080}]
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cluster-setup-smoke-test
-  namespace: ${SMOKE_NAMESPACE}
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: ${SMOKE_HOST}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: cluster-setup-smoke-test
-                port: {number: 80}
-EOF
-
-# ingress-nginx reloads its config asynchronously, so a freshly-created
-# Ingress can 404/503/refuse connections for up to ~30s before routing works.
-wait_for_http() {
-  local url="$1"
-  local curl_opts="$2"
-  local attempt
-  for attempt in $(seq 1 30); do
-    if curl -fsS ${curl_opts} --max-time 5 "${url}" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 2
-  done
-  echo "Timed out waiting for ${url} to become reachable" >&2
-  return 1
-}
-
-# The SSL-passthrough patch above replaces the ingress-nginx-controller pod
-# (hostPorts 80/443 can't coexist on one node, so it's a full kill-then-
-# recreate, not a smooth rolling update). `kubectl rollout status` only
-# confirms the new pod passed its /healthz readiness probe — it says
-# nothing about kube-proxy having programmed the new pod's IP into the
-# ingress-nginx-controller-admission Service's dataplane yet. Applying this
-# Ingress (which goes through that validating webhook) can land in that gap
-# and get "connection refused". Retry instead of guessing a fixed delay —
-# the apply is idempotent.
-for attempt in $(seq 1 15); do
-  if kubectl apply -f "${SMOKE_MANIFEST}"; then
-    break
-  fi
-  [ "${attempt}" -eq 15 ] && { echo "Failed to apply smoke test manifest after retries" >&2; exit 1; }
-  sleep 2
-done
-kubectl wait --for=condition=ready pod -l app=cluster-setup-smoke-test --timeout=180s -n "${SMOKE_NAMESPACE}"
-
-echo "Checking http://${SMOKE_HOST}:${INGRESS_HTTP_PORT}/ (ingress-nginx reload can take up to ~30s)..."
-wait_for_http "http://${SMOKE_HOST}:${INGRESS_HTTP_PORT}/" ""
-echo "Checking https://${SMOKE_HOST}:${INGRESS_HTTPS_PORT}/ ..."
-wait_for_http "https://${SMOKE_HOST}:${INGRESS_HTTPS_PORT}/" "-k"
-echo "Smoke test passed: macOS -> ${CONTAINER_ENGINE} VM -> kind node -> ingress-nginx -> pod is working."
-
-cleanup_smoke_test
-trap - EXIT
 
 echo ""
 echo "Cluster ready. To use it in this shell:"

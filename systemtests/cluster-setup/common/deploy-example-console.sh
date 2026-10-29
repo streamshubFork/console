@@ -20,7 +20,6 @@
 #   --channel              default: alpha
 #   --operator-namespace   default: operators       (Strimzi + Console operator)
 #   --kafka-namespace      default: console-namespace (Kafka cluster + Console instance)
-#   --listener             default: scramplain      (internal listener Console uses, macOS only)
 #
 # Strimzi installs via an OLM Subscription (channel derived from this repo's
 # strimzi-api.version), same mechanism playwright-tests.yml uses — not Helm.
@@ -149,13 +148,6 @@ export LISTENER_TYPE="ingress"
 echo "Applying examples/kafka/*.yaml (cluster domain: ${CLUSTER_DOMAIN})..."
 cat ../../../examples/kafka/*.yaml | envsubst | kubectl apply -n "${KAFKA_NAMESPACE}" -f -
 
-if [ "${NEEDS_LOCAL_PORT_FORWARD}" = true ]; then
-  echo "macOS: adding internal '${LISTENER}' listener for in-cluster consumers (e.g. Console)..."
-  kubectl -n "${KAFKA_NAMESPACE}" patch kafka "${KAFKA_NAME}" --type=json \
-    -p="[{\"op\": \"add\", \"path\": \"/spec/kafka/listeners/-\", \"value\": {\"name\": \"${LISTENER}\", \"port\": 9095, \"type\": \"internal\", \"tls\": false, \"authentication\": {\"type\": \"scram-sha-512\"}}}]" \
-    2>/dev/null || echo "(listener already present, skipping)"
-fi
-
 echo "Waiting for Kafka '${KAFKA_NAME}' to become Ready (can take a few minutes)..."
 kubectl -n "${KAFKA_NAMESPACE}" wait --for=condition=Ready "kafka/${KAFKA_NAME}" --timeout=600s
 
@@ -169,14 +161,6 @@ cat ../../../examples/console/kafkauser-role-rolebinding.yaml | envsubst | kubec
 
 echo "Applying examples/console/010-Console-example.yaml..."
 cat ../../../examples/console/010-Console-example.yaml | envsubst | kubectl apply -n "${KAFKA_NAMESPACE}" -f -
-
-if [ "${NEEDS_LOCAL_PORT_FORWARD}" = true ]; then
-  echo "macOS: pointing Console at the internal '${LISTENER}' listener (not the example's default 'secure')..."
-  kubectl -n "${KAFKA_NAMESPACE}" patch console "${CONSOLE_NAME}" --type=json \
-    -p="[{\"op\": \"replace\", \"path\": \"/spec/kafkaClusters/0/listener\", \"value\": \"${LISTENER}\"}]"
-else
-  echo "Linux: leaving Console on the example's default 'secure' listener (node IP is directly reachable in-cluster)"
-fi
 
 echo "Waiting for Console '${CONSOLE_NAME}' to become Ready (can take a minute or two)..."
 kubectl -n "${KAFKA_NAMESPACE}" wait --for=condition=Ready "console/${CONSOLE_NAME}" --timeout=300s

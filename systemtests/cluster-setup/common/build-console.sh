@@ -24,7 +24,7 @@ PROJECT_ROOT="$(cd ../../.. && pwd)"
 source ./common.sh
 # modify-bundle-metadata.sh (below) needs skopeo to inspect the built images
 ensure_installed skopeo install_skopeo
-# Restarts colima if it died since the cluster step (macOS), then links the docker socket for skopeo
+# Ensure docker engine is available and link the docker socket for skopeo
 if [ "${CONTAINER_ENGINE:-}" = "docker" ]; then
   ensure_docker_engine
 else

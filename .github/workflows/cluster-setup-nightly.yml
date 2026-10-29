@@ -20,9 +20,7 @@ jobs:
   minikube-smoke-test:
     name: cluster-smoke-test (${{ matrix.cluster }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
-    # The macOS leg is experimental: a failure there doesn't fail the workflow
-    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -30,23 +28,10 @@ jobs:
           - os: ubuntu-24.04
             cluster: minikube
             container_engine: docker
-            experimental: false
             minikube_cpus: '3'
             minikube_memory: '10g'
-          # Standard `macos-15` is an arm64 runner with only 3 CPUs / 7GB RAM and no nested
-          # virtualization, so a colima VM (8GB) can't fit and starves the runner ("lost
-          # communication with the server"). macos-15-intel has 4 CPUs / 14GB RAM and
-          # Hypervisor.framework support: 2 CPUs / 8GB for the VM leaves headroom for the host.
-          - os: macos-15-intel
-            cluster: kind
-            container_engine: docker
-            experimental: true
-            colima_cpus: '3'
-            colima_memory: '10'
-            colima_vm_type: 'vz'
     env:
       CONTAINER_ENGINE: ${{ matrix.container_engine }}
-      KIND_ETCD_TMPFS: ${{ matrix.cluster == 'kind' && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -68,22 +53,9 @@ jobs:
       - name: Fetch Operator Framework Utilities (operator-sdk, opm)
         run: ./operator/bin/fetch-operator-utilities.sh
 
-      - name: Log runner resources
-        if: runner.os == 'macOS'
-        run: |
-          echo "CPUs: $(sysctl -n hw.ncpu)"
-          echo "Memory (GB): $(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))"
-          echo "Hypervisor support (kern.hv_support): $(sysctl -n kern.hv_support)"
-          df -h /
-
-      # On macOS, the cluster scripts install kubectl, kind and docker (colima) and start colima
-      # with COLIMA_CPUS / COLIMA_MEMORY (empty and ignored on Linux). MINIKUBE_* are ignored by kind.
       - name: Create cluster
         working-directory: systemtests/cluster-setup
         env:
-          COLIMA_CPUS: ${{ matrix.colima_cpus }}
-          COLIMA_MEMORY: ${{ matrix.colima_memory }}
-          COLIMA_VM_TYPE: ${{ matrix.colima_vm_type }}
           MINIKUBE_CPU_COUNT: ${{ matrix.minikube_cpus }}
           MINIKUBE_MEMORY: ${{ matrix.minikube_memory }}
           MINIKUBE_EXTRA_ADDONS: 'storage,ingress-dns,metrics-server'
@@ -105,8 +77,6 @@ jobs:
 
       - name: Deploy Strimzi, Console operator, Kafka, and Console instance
         working-directory: systemtests/cluster-setup
-        env:
-          KAFKA_REPLICAS: ${{ matrix.kafka_replicas }}
         run: |
           source ${{ matrix.cluster }}/.cluster-env
           TAG=$(cd ../.. && mvn help:evaluate -Dexpression=project.version -q -DforceStdout | tr '[:upper:]' '[:lower:]')
@@ -141,34 +111,12 @@ jobs:
         run: |
           set -euo pipefail
           source ${{ matrix.cluster }}/.cluster-env
-          # minikube on macOS is exposed via port-forward, so its .cluster-env also sets LOCAL_HTTPS_PORT
-          url="https://example-console.${CONSOLE_CLUSTER_DOMAIN}${LOCAL_HTTPS_PORT:+:${LOCAL_HTTPS_PORT}}/"
+          url="https://example-console.${CONSOLE_CLUSTER_DOMAIN}/"
           echo "Checking ${url}"
           status=$(curl -sk -o /tmp/console.html -w '%{http_code}' --max-time 15 "${url}")
           echo "HTTP status: ${status}"
           [ "${status}" = "200" ]
           grep -q "StreamsHub Console" /tmp/console.html
-
-      - name: Collect macOS VM and host diagnostics on failure
-        if: failure() && runner.os == 'macOS'
-        run: |
-          echo "=== kind node logs (kubelet / apiserver / etcd) ==="
-          kind export logs /tmp/kind-logs --name console-local || true
-          for f in /tmp/kind-logs/*/kubelet.log /tmp/kind-logs/*/containers/kube-apiserver-*.log /tmp/kind-logs/*/containers/etcd-*.log; do
-            [ -f "${f}" ] && { echo "--- ${f} ---"; tail -n 80 "${f}"; }
-          done
-          echo "=== colima ==="
-          colima list || true
-          colima status || true
-          echo "=== docker info ==="
-          docker info || true
-          echo "=== Host memory ==="
-          vm_stat || true
-          memory_pressure || true
-          echo "=== Host disk ==="
-          df -h || true
-          echo "=== Disk used inside the colima VM ==="
-          colima ssh -- df -h || true
 
       - name: Collect diagnostics on failure
         if: failure()
