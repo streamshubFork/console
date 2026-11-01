@@ -20,10 +20,16 @@
 #   --channel              default: alpha
 #   --operator-namespace   default: operators       (Strimzi + Console operator)
 #   --kafka-namespace      default: console-namespace (Kafka cluster + Console instance)
-#   --listener             default: scramplain      (internal listener Console uses, macOS only)
 #
 # Strimzi installs via an OLM Subscription (channel derived from this repo's
 # strimzi-api.version), same mechanism playwright-tests.yml uses — not Helm.
+#
+# Console connects to Kafka via the example's default `secure` (ingress)
+# listener on every OS/cluster type — kind/create-cluster.sh and
+# minikube/create-cluster.sh both configure CoreDNS split-horizon DNS for
+# CONSOLE_CLUSTER_DOMAIN (see common.sh:configure_dns_split_horizon), so that
+# listener's hostname resolves correctly from inside the cluster too, not
+# just from the host. No listener workaround needed here anymore.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 PROJECT_ROOT="$(cd ../../.. && pwd)"
@@ -37,13 +43,12 @@ OPERATOR_NAMESPACE="operators"
 KAFKA_NAMESPACE="console-namespace"
 KAFKA_NAME="console-kafka"
 CONSOLE_NAME="example"
-LISTENER="scramplain"
 CONSOLE_CLUSTER_DOMAIN="${CONSOLE_CLUSTER_DOMAIN:-127.0.0.1.nip.io}"
 
 usage() {
   echo "Usage: $0 --catalog-image <image> [--catalog-namespace olm] [--catalog-name streamshub-console-catalog]" >&2
   echo "          [--channel alpha] [--operator-namespace operators]" >&2
-  echo "          [--kafka-namespace console-namespace] [--listener scramplain]" >&2
+  echo "          [--kafka-namespace console-namespace]" >&2
   exit 1
 }
 
@@ -55,7 +60,6 @@ while [ $# -gt 0 ]; do
     --channel) CHANNEL="$2"; shift 2 ;;
     --operator-namespace) OPERATOR_NAMESPACE="$2"; shift 2 ;;
     --kafka-namespace) KAFKA_NAMESPACE="$2"; shift 2 ;;
-    --listener) LISTENER="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "Unknown argument: $1" >&2; usage ;;
   esac
@@ -138,7 +142,7 @@ done
 [ "${phase}" = "Succeeded" ] || { echo "Timed out waiting for CSV '${csv}' (last phase: ${phase:-unknown})" >&2; exit 1; }
 echo "Console operator installed: ${csv}"
 
-# --- 4. Kafka cluster (examples/kafka/*.yaml + internal listener) ----------
+# --- 4. Kafka cluster (examples/kafka/*.yaml) -------------------------------
 kubectl create namespace "${KAFKA_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
 export CLUSTER_DOMAIN="${CONSOLE_CLUSTER_DOMAIN}"
@@ -147,13 +151,6 @@ export LISTENER_TYPE="ingress"
 
 echo "Applying examples/kafka/*.yaml (cluster domain: ${CLUSTER_DOMAIN})..."
 cat ../../../examples/kafka/*.yaml | envsubst | kubectl apply -n "${KAFKA_NAMESPACE}" -f -
-
-if [ "${NEEDS_LOCAL_PORT_FORWARD}" = true ]; then
-  echo "macOS: adding internal '${LISTENER}' listener for in-cluster consumers (e.g. Console)..."
-  kubectl -n "${KAFKA_NAMESPACE}" patch kafka "${KAFKA_NAME}" --type=json \
-    -p="[{\"op\": \"add\", \"path\": \"/spec/kafka/listeners/-\", \"value\": {\"name\": \"${LISTENER}\", \"port\": 9095, \"type\": \"internal\", \"tls\": false, \"authentication\": {\"type\": \"scram-sha-512\"}}}]" \
-    2>/dev/null || echo "(listener already present, skipping)"
-fi
 
 echo "Waiting for Kafka '${KAFKA_NAME}' to become Ready (can take a few minutes)..."
 kubectl -n "${KAFKA_NAMESPACE}" wait --for=condition=Ready "kafka/${KAFKA_NAME}" --timeout=600s
@@ -168,14 +165,6 @@ cat ../../../examples/console/kafkauser-role-rolebinding.yaml | envsubst | kubec
 
 echo "Applying examples/console/010-Console-example.yaml..."
 cat ../../../examples/console/010-Console-example.yaml | envsubst | kubectl apply -n "${KAFKA_NAMESPACE}" -f -
-
-if [ "${NEEDS_LOCAL_PORT_FORWARD}" = true ]; then
-  echo "macOS: pointing Console at the internal '${LISTENER}' listener (not the example's default 'secure')..."
-  kubectl -n "${KAFKA_NAMESPACE}" patch console "${CONSOLE_NAME}" --type=json \
-    -p="[{\"op\": \"replace\", \"path\": \"/spec/kafkaClusters/0/listener\", \"value\": \"${LISTENER}\"}]"
-else
-  echo "Linux: leaving Console on the example's default 'secure' listener (node IP is directly reachable in-cluster)"
-fi
 
 echo "Waiting for Console '${CONSOLE_NAME}' to become Ready (can take a minute or two)..."
 kubectl -n "${KAFKA_NAMESPACE}" wait --for=condition=Ready "console/${CONSOLE_NAME}" --timeout=300s

@@ -52,24 +52,8 @@ fi
 
 IMAGE_PREFIX="${REGISTRY}/${GROUP}"
 
-# --- Detect container runtime (prefer docker; podman can masquerade as it) -
-if command -v podman >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
-  if docker --version | grep -q podman; then
-    CONTAINER_RUNTIME=podman
-  else
-    CONTAINER_RUNTIME=docker
-  fi
-elif command -v podman >/dev/null 2>&1; then
-  CONTAINER_RUNTIME=podman
-else
-  CONTAINER_RUNTIME=docker
-fi
-
-if [ "${CONTAINER_RUNTIME}" = "podman" ]; then
-  SKOPEO_TRANSPORT="containers-storage:"
-else
-  SKOPEO_TRANSPORT="docker-daemon:"
-fi
+CONTAINER_RUNTIME="$(detect_image_runtime)"
+SKOPEO_TRANSPORT="$(skopeo_transport_for "${CONTAINER_RUNTIME}")"
 
 if [ -z "${PLATFORMS:-}" ]; then
   if [ "${CONTAINER_RUNTIME}" = "podman" ]; then

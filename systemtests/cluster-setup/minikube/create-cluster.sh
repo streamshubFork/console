@@ -94,6 +94,16 @@ else
     || { echo "port-forward failed to start, check ${PORT_FORWARD_LOG_FILE}" >&2; exit 1; }
 fi
 
+# Lets anything running *inside* the cluster (Console, most notably — it
+# connects to Kafka's ingress-exposed "secure" listener using this same
+# CONSOLE_CLUSTER_DOMAIN) actually reach the ingress controller through it.
+# Called after CONSOLE_CLUSTER_DOMAIN is finalized above (it's rewritten to
+# the real node IP on Linux). See common.sh:configure_dns_split_horizon for
+# the full "why" — on Linux this is a harmless no-op-equivalent (the domain
+# was already reachable from Pods), but applying it unconditionally avoids
+# having to detect that case specially.
+configure_dns_split_horizon "${CONSOLE_CLUSTER_DOMAIN}" ingress-nginx ingress-nginx-controller
+
 if [ "${LOCAL_ACCESS}" = true ]; then
   cat > "${CLUSTER_ENV_FILE}" <<EOF
 export CONSOLE_CLUSTER_DOMAIN=${CONSOLE_CLUSTER_DOMAIN}
@@ -119,107 +129,14 @@ fi
 # --- Verify the exposure path actually works end to end --------------------
 echo ""
 echo "Verifying exposure path with a smoke test..."
-SMOKE_NAMESPACE="default"
-SMOKE_HOST="echo.${CONSOLE_CLUSTER_DOMAIN}"
-SMOKE_MANIFEST=$(mktemp)
-cleanup_smoke_test() {
-  kubectl delete -f "${SMOKE_MANIFEST}" --ignore-not-found >/dev/null 2>&1 || true
-  rm -f "${SMOKE_MANIFEST}"
-}
-trap cleanup_smoke_test EXIT
-
-cat > "${SMOKE_MANIFEST}" <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cluster-setup-smoke-test
-  namespace: ${SMOKE_NAMESPACE}
-spec:
-  replicas: 1
-  selector:
-    matchLabels: {app: cluster-setup-smoke-test}
-  template:
-    metadata:
-      labels: {app: cluster-setup-smoke-test}
-    spec:
-      containers:
-        - name: echo-server
-          image: registry.k8s.io/e2e-test-images/agnhost:2.53
-          args: ["netexec", "--http-port=8080"]
-          ports: [{containerPort: 8080}]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: cluster-setup-smoke-test
-  namespace: ${SMOKE_NAMESPACE}
-spec:
-  selector: {app: cluster-setup-smoke-test}
-  ports: [{port: 80, targetPort: 8080}]
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cluster-setup-smoke-test
-  namespace: ${SMOKE_NAMESPACE}
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: ${SMOKE_HOST}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: cluster-setup-smoke-test
-                port: {number: 80}
-EOF
-
-# ingress-nginx reloads its config asynchronously, so a freshly-created
-# Ingress can 404/503/refuse connections for up to ~30s before routing works.
-wait_for_http() {
-  local url="$1"
-  local curl_opts="$2"
-  local attempt
-  for attempt in $(seq 1 30); do
-    if curl -fsS ${curl_opts} --max-time 5 "${url}" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 2
-  done
-  echo "Timed out waiting for ${url} to become reachable" >&2
-  return 1
-}
-
-# The SSL-passthrough patch above replaces the ingress-nginx-controller pod.
-# `kubectl rollout status` only confirms the new pod passed its /healthz
-# readiness probe — it says nothing about kube-proxy having programmed the
-# new pod's IP into the ingress-nginx-controller-admission Service's
-# dataplane yet. Applying this Ingress (which goes through that validating
-# webhook) can land in that gap and get "connection refused". Retry instead
-# of guessing a fixed delay — the apply is idempotent.
-for attempt in $(seq 1 15); do
-  if kubectl apply -f "${SMOKE_MANIFEST}"; then
-    break
-  fi
-  [ "${attempt}" -eq 15 ] && { echo "Failed to apply smoke test manifest after retries" >&2; exit 1; }
-  sleep 2
-done
-kubectl wait --for=condition=ready pod -l app=cluster-setup-smoke-test --timeout=180s -n "${SMOKE_NAMESPACE}"
-
-echo "Checking http://${SMOKE_HOST}:${SMOKE_HTTP_PORT}/ (ingress-nginx reload can take up to ~30s)..."
-wait_for_http "http://${SMOKE_HOST}:${SMOKE_HTTP_PORT}/" ""
-echo "Checking https://${SMOKE_HOST}:${SMOKE_HTTPS_PORT}/ ..."
-wait_for_http "https://${SMOKE_HOST}:${SMOKE_HTTPS_PORT}/" "-k"
-if [ "${TUNNEL_ACTIVE}" = true ]; then
-  echo "Smoke test passed: macOS -> sudo minikube tunnel -> ingress-nginx -> pod is working (minikube)."
+verify_ingress_exposure "${CONSOLE_CLUSTER_DOMAIN}" "${SMOKE_HTTP_PORT}" "${SMOKE_HTTPS_PORT}"
+if [ "${LOCAL_ACCESS}" = true ]; then
+  echo "Smoke test passed: minikube node IP -> ingress-nginx -> pod is working (minikube)."
+elif [ "${TUNNEL_ACTIVE}" = true ]; then
+  echo "Smoke test passed: sudo minikube tunnel -> ingress-nginx -> pod is working (minikube)."
 else
-  echo "Smoke test passed: macOS -> kubectl port-forward -> ingress-nginx -> pod is working (minikube)."
+  echo "Smoke test passed: kubectl port-forward -> ingress-nginx -> pod is working (minikube)."
 fi
-
-cleanup_smoke_test
-trap - EXIT
 
 echo ""
 echo "Cluster ready. To use it in this shell:"

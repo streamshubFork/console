@@ -133,10 +133,14 @@ All scripts in both directories are idempotent — safe to re-run.
 Creates (or reuses) a kind cluster with ports 80/443 mapped to the host,
 installs ingress-nginx bound via `hostPort`, and patches in
 `--enable-ssl-passthrough` (needed for Kafka's TLS-terminating `secure`
-listener). Finishes by deploying a throwaway echo-server behind an Ingress
-and curling it over HTTP/HTTPS to confirm the whole path actually works
-before declaring the cluster ready — if that check fails, the script exits
-non-zero instead of claiming success.
+listener). Also configures CoreDNS with split-horizon DNS for
+`CONSOLE_CLUSTER_DOMAIN` (see "DNS inside the cluster" below) — without
+it, anything connecting to Kafka's `secure` listener *from inside the
+cluster* (Console, most notably) can't actually reach it. Finishes by
+deploying a throwaway echo-server behind an Ingress and curling it over
+HTTP/HTTPS to confirm the whole path actually works before declaring the
+cluster ready — if that check fails, the script exits non-zero instead of
+claiming success.
 
 Env vars (all optional, see `kind/env.sh`): `CONTAINER_ENGINE`
 (`podman`/`docker`), `CLUSTER_NAME`, `INGRESS_HTTP_PORT`/`INGRESS_HTTPS_PORT`,
@@ -154,7 +158,9 @@ port-forward` on non-privileged local ports (default `8080`/`8443`,
 override via `LOCAL_HTTP_PORT`/`LOCAL_HTTPS_PORT`); if that port-forward
 process dies, just re-run `create-cluster.sh` — it detects the dead PID and
 restarts it. Either way, it verifies the exposure path the same way as
-kind's script. Same env vars as kind's script, plus (for CI-style resource
+kind's script, and configures the same CoreDNS split-horizon DNS (see "DNS
+inside the cluster" below) once `CONSOLE_CLUSTER_DOMAIN` is finalized.
+Same env vars as kind's script, plus (for CI-style resource
 sizing — all optional, no-op unless set): `MINIKUBE_CPU_COUNT`,
 `MINIKUBE_MEMORY`, `MINIKUBE_DISK_SIZE`, `MINIKUBE_EXTRA_ADDONS`
 (comma-separated, appended to the base `ingress` addon),
@@ -269,12 +275,40 @@ Console instance — using the project's own `examples/kafka/*.yaml` and
 --channel              default: alpha
 --operator-namespace   default: operators
 --kafka-namespace      default: console-namespace
---listener             default: scramplain  (macOS only — see below)
 ```
 
-On Linux, Console talks to Kafka over the example's default `secure`
-ingress listener directly (the node IP is reachable in-cluster, same as
-the host). On macOS, Console is instead pointed at an internal listener
-(`--listener`, patched in alongside the Kafka cluster) since the `secure`
-listener's hostname is only reachable from the host's port-forward, not
-from pods running inside the cluster.
+Console connects to Kafka over the example's default `secure` (ingress)
+listener on every OS and cluster type — no listener workaround needed.
+See "DNS inside the cluster" below for why that's safe to rely on even
+when `CONSOLE_CLUSTER_DOMAIN` is a host-loopback address.
+
+## DNS inside the cluster
+
+`kind/create-cluster.sh` and `minikube/create-cluster.sh` both configure
+CoreDNS with **split-horizon DNS** for `CONSOLE_CLUSTER_DOMAIN`
+(`configure_dns_split_horizon` in `common/common.sh`): any `*.<domain>`
+query that originates from *inside* the cluster (a Pod) is answered
+directly with the ingress controller's ClusterIP, while the exact same
+hostname still resolves the normal way (via real public nip.io DNS) for
+anything outside the cluster — your browser, a test process on the host,
+etc. Same hostname, different (and each correct for its own context)
+answer depending on who's asking.
+
+This matters because `CONSOLE_CLUSTER_DOMAIN` defaults to a
+`127.0.0.1.nip.io`-style address on both kind (always, any host OS) and
+minikube-on-macOS. `127.0.0.1` means something different to every asker:
+from the host it's genuinely the host (where Docker/colima/podman forward
+ports 80/443 to the node), but from inside a Pod it's that Pod's own
+loopback interface — never the ingress controller. Kafka's `secure`
+listener is ingress-exposed and addressed by exactly this kind of
+hostname, and Console is itself a Pod: without the DNS fix, Console's own
+connection to Kafka resolves to its own loopback and every Kafka API call
+times out ("Timed out waiting for a node assignment"), even though both
+Console and Kafka are perfectly healthy — confirmed hitting this directly
+running the real systemtests suite against a local kind cluster.
+
+minikube-on-Linux doesn't have this problem (its domain is the node's own
+real, already-routable IP, reachable from both host and Pods without any
+trick), so the fix is a no-op there in practice — it's applied
+unconditionally rather than detected per cluster type, since doing so is
+harmless and keeps the scripts from needing to special-case it.

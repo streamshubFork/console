@@ -49,23 +49,13 @@ IMAGE_PREFIX="${REGISTRY}/${GROUP}"
 
 # Same runtime detection as build-console.sh, to pick the matching skopeo
 # source transport for wherever the images were actually built.
-if command -v podman >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
-  if docker --version | grep -q podman; then
-    CONTAINER_RUNTIME=podman
-  else
-    CONTAINER_RUNTIME=docker
-  fi
-elif command -v podman >/dev/null 2>&1; then
-  CONTAINER_RUNTIME=podman
-else
-  CONTAINER_RUNTIME=docker
-fi
+CONTAINER_RUNTIME="$(detect_image_runtime)"
+SKOPEO_TRANSPORT="$(skopeo_transport_for "${CONTAINER_RUNTIME}")"
 
-if [ "${CONTAINER_RUNTIME}" = "podman" ]; then
-  SKOPEO_TRANSPORT="containers-storage:"
-else
-  SKOPEO_TRANSPORT="docker-daemon:"
-fi
+# The actual network connection for the push — see registry_host_for_push
+# in common.sh for why this has to be IPv4-explicit, unlike IMAGE_PREFIX
+# above (which stays "localhost:<port>" everywhere else).
+PUSH_PREFIX="$(registry_host_for_push "${REGISTRY}")/${GROUP}"
 
 echo "Pushing images to ${REGISTRY} for kind cluster '${CLUSTER_NAME}'..."
 for img in console-api console-operator console-operator-bundle console-operator-catalog; do
@@ -76,7 +66,7 @@ for img in console-api console-operator console-operator-bundle console-operator
   # already baked into the CSV by digest.
   skopeo copy --preserve-digests --dest-tls-verify=false \
     "${SKOPEO_TRANSPORT}${IMAGE_PREFIX}/${img}:${TAG}" \
-    "docker://${IMAGE_PREFIX}/${img}:${TAG}"
+    "docker://${PUSH_PREFIX}/${img}:${TAG}"
 done
 
 echo ""

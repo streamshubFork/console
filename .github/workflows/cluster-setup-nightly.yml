@@ -18,21 +18,16 @@ permissions:
 
 jobs:
   minikube-smoke-test:
-    name: minikube-smoke-test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: minikube-smoke-test
+    # Ubuntu only: a full minikube + Strimzi + Kafka + Console stack, plus
+    # building the Console images from source, doesn't fit a macOS runner's
+    # 4 CPU / 14 GB (the colima VM has to host both the minikube node and
+    # the image builds at once). macOS is exercised locally instead — see
+    # systemtests/cluster-setup/README.md.
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            container_engine: docker
-          # Intel runner (4 CPU / 14 GB): Apple-silicon runners can't run the nested VM colima needs.
-          # macos-15-intel rather than -26: the latter is Homebrew Tier 3 (no bottles).
-          - os: macos-15-intel
-            container_engine: docker
     env:
-      CONTAINER_ENGINE: ${{ matrix.container_engine }}
+      CONTAINER_ENGINE: docker
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -54,14 +49,9 @@ jobs:
       - name: Fetch Operator Framework Utilities (operator-sdk, opm)
         run: ./operator/bin/fetch-operator-utilities.sh
 
-      # On macOS, create-cluster.sh installs kubectl and docker (colima) and starts colima.
-      # The colima VM must hold the 10g minikube node, so it gets 12 GB of the runner's 14 GB
-      # (ignored on Linux).
       - name: Create minikube cluster
         working-directory: systemtests/cluster-setup
         env:
-          COLIMA_CPUS: '4'
-          COLIMA_MEMORY: '12'
           MINIKUBE_CPU_COUNT: '3'
           MINIKUBE_MEMORY: '10g'
           MINIKUBE_EXTRA_ADDONS: 'storage,ingress-dns,metrics-server'
@@ -117,7 +107,8 @@ jobs:
         run: |
           set -euo pipefail
           source minikube/.cluster-env
-          # On macOS the console is exposed via port-forward, so .cluster-env also sets LOCAL_HTTPS_PORT
+          # Linux: create-cluster.sh uses the minikube node's real IP directly, so
+          # .cluster-env never sets LOCAL_HTTPS_PORT here — this expansion is a no-op.
           url="https://example-console.${CONSOLE_CLUSTER_DOMAIN}${LOCAL_HTTPS_PORT:+:${LOCAL_HTTPS_PORT}}/"
           echo "Checking ${url}"
           status=$(curl -sk -o /tmp/console.html -w '%{http_code}' --max-time 15 "${url}")
