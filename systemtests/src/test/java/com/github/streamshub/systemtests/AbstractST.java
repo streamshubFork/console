@@ -41,7 +41,7 @@ public abstract class AbstractST {
         }
 
         KubeResourceManager.get().setTestContext(extensionContext);
-        // Now ENV are set, install operators
+        // Now ENV are set, install operators - test 1
 
         NamespaceUtils.prepareNamespace(Constants.CO_NAMESPACE);
         strimziOperatorSetup = new StrimziOperatorSetup(Constants.CO_NAMESPACE);
